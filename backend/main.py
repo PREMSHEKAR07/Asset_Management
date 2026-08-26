@@ -1,0 +1,163 @@
+from contextlib import asynccontextmanager
+import os
+from sqlalchemy import text
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from database.connection import SessionLocal, Base, engine
+from database.seeding import seed_database
+from app.config import settings
+
+# Import routers
+from routers import (
+    auth_router, employees_router, assets_router, categories_router,
+    licenses_router, subscription_groups_router, repairs_router, software_tickets_router, announcements_router, guidelines_router,
+    notifications_router, activity_router, dashboard_router, departments_router
+)
+
+# Lifespan Event Handler (replaces deprecated @app.on_event)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # --- Startup Logic ---
+    # Make sure connection works, run migrations and seeding
+    db = SessionLocal()
+    try:
+        # Migration: ensure asset_id in repairs table is nullable for new asset requests
+        try:
+            db.execute(text("ALTER TABLE repairs MODIFY asset_id VARCHAR(50) NULL;"))
+            db.commit()
+        except Exception:
+            db.rollback()
+
+        # Migration: ensure acceptance_status in assets table
+        try:
+            db.execute(text("ALTER TABLE assets ADD COLUMN acceptance_status VARCHAR(50) DEFAULT 'Accepted';"))
+            db.commit()
+        except Exception:
+            db.rollback()
+
+        # Migration: ensure group_id and group_name in licenses table
+        try:
+            db.execute(text("ALTER TABLE licenses ADD COLUMN group_id VARCHAR(50);"))
+            db.commit()
+        except Exception:
+            db.rollback()
+
+        try:
+            db.execute(text("ALTER TABLE licenses ADD COLUMN group_name VARCHAR(100);"))
+            db.commit()
+        except Exception:
+            db.rollback()
+
+        # Migration: fix any malformed email address in employees table
+        try:
+            db.execute(text("UPDATE employees SET email = 'rakesh.kore@company.com' WHERE email = 'rakesh.@company.com';"))
+            db.commit()
+        except Exception:
+            db.rollback()
+
+        seed_database(db)
+    except Exception as e:
+        print(f"Error seeding database during startup: {e}")
+    finally:
+        db.close()
+
+    # Start license expiry scheduler daemon for daily 10:00 AM checks
+    try:
+        from services.license_scheduler import start_license_expiry_scheduler
+        start_license_expiry_scheduler()
+    except Exception as sched_err:
+        print(f"Failed to initialize license expiry scheduler: {sched_err}")
+
+    yield
+    # --- Shutdown Logic (if any) ---
+
+app = FastAPI(
+    title="IT Asset Management System API",
+    description="Backend API for Quadrant IT Services Full-Stack Application",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# CORS Middleware Setup
+origins = settings.cors_origins_list
+allow_cred = True
+if "*" in origins:
+    allow_cred = False
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_origin_regex=r"^https?:\/\/.*",
+    allow_credentials=allow_cred,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# Register Routers
+app.include_router(auth_router)
+app.include_router(employees_router)
+app.include_router(assets_router)
+app.include_router(categories_router)
+app.include_router(licenses_router)
+app.include_router(subscription_groups_router)
+app.include_router(repairs_router)
+app.include_router(software_tickets_router)
+app.include_router(announcements_router)
+app.include_router(guidelines_router)
+app.include_router(notifications_router)
+app.include_router(activity_router)
+app.include_router(dashboard_router)
+app.include_router(departments_router)
+
+from fastapi.encoders import jsonable_encoder
+import traceback
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    print("FastAPI Validation Error Details:")
+    print("Errors:", exc.errors())
+    try:
+        body = await request.json()
+        print("Request JSON Body:", body)
+    except Exception:
+        body = await request.body()
+        print("Request Raw Body:", body)
+    
+    formatted_errors = jsonable_encoder(exc.errors())
+    error_msgs = []
+    for err in formatted_errors:
+        msg = err.get("msg", "Validation error").replace("Value error, ", "")
+        error_msgs.append(msg)
+    detail_str = "; ".join(error_msgs) if error_msgs else "Validation error"
+
+    return JSONResponse(
+        status_code=422,
+        content={"detail": detail_str, "errors": formatted_errors}
+    )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    print("Unhandled Exception Encountered:")
+    traceback.print_exc()
+    origin = request.headers.get("origin", "*")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal Server Error: {str(exc)}"},
+        headers={"Access-Control-Allow-Origin": origin, "Access-Control-Allow-Credentials": "true"}
+    )
+
+@app.get("/")
+def read_root():
+    return {
+        "status": "online",
+        "message": "IT Asset Management System Backend API is active",
+        "database": "connected"
+    }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
