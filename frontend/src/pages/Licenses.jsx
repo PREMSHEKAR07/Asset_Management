@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import {
   Key,
@@ -16,6 +17,7 @@ import {
   Folder,
   FolderPlus,
   Layers,
+  ArrowLeft,
   ChevronRight,
   MoreVertical
 } from 'lucide-react';
@@ -45,8 +47,8 @@ const Licenses = () => {
   const [statusFilter, setStatusFilter] = useState('All'); // All | Available | Expiring Soon | Expired | Deactivated
   const [selectedGroupId, setSelectedGroupId] = useState(null); // null = overview, or group ID
 
-  // Active dropdown menu state (for ⋮ menus)
-  const [activeMenuLicId, setActiveMenuLicId] = useState(null);
+  // Floating portal dropdown menu state (for ⋮ menus)
+  const [menuState, setMenuState] = useState(null); // { id, lic, isGroup, top, right }
   const menuRef = useRef(null);
 
   // Admin Security Password Verification Modal State
@@ -58,13 +60,22 @@ const Licenses = () => {
   });
 
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setActiveMenuLicId(null);
+    const handleClose = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuState(null);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    const handleScrollOrResize = () => {
+      setMenuState(null);
+    };
+    document.addEventListener('mousedown', handleClose);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    window.addEventListener('resize', handleScrollOrResize);
+    return () => {
+      document.removeEventListener('mousedown', handleClose);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize);
+    };
   }, []);
 
   useEffect(() => {
@@ -95,7 +106,7 @@ const Licenses = () => {
 
   const handleSelectGroup = (groupId) => {
     setSelectedGroupId(groupId);
-    setActiveMenuLicId(null);
+    setMenuState(null);
     const newParams = new URLSearchParams(searchParams);
     if (groupId) {
       newParams.set('group', groupId);
@@ -229,14 +240,14 @@ const Licenses = () => {
     }
     setModalEmployeeSearch('');
 
-    setActiveMenuLicId(null);
+    setMenuState(null);
     setIsEditModalOpen(true);
   };
 
   // Open Renew Modal
   const handleOpenRenewModal = (lic) => {
     setLicToRenew(lic);
-    setActiveMenuLicId(null);
+    setMenuState(null);
     const oldEnd = new Date(lic.endDate || lic.end_date);
     let newStart = new Date();
     if (!isNaN(oldEnd.getTime()) && oldEnd > new Date()) {
@@ -256,7 +267,7 @@ const Licenses = () => {
   // Open Deactivate Modal
   const handleOpenDeactivateModal = (lic) => {
     setLicToDeactivate(lic);
-    setActiveMenuLicId(null);
+    setMenuState(null);
     setDeactivateReason('');
   };
 
@@ -688,21 +699,22 @@ const Licenses = () => {
       {/* ================= VIEW 1: GROUP DRILLDOWN VIEW ================= */}
       {activeGroup ? (
         <div className="space-y-6 animate-fade-in">
-          {/* Breadcrumb Navigation: Licenses / OpenAI */}
-          <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
+          {/* Back Navigation Bar: ← Back to Licenses */}
+          <div>
             <button
               type="button"
               onClick={() => handleSelectGroup(null)}
-              className="text-slate-500 hover:text-[#0B2545] font-bold cursor-pointer transition-colors"
+              className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border border-[#E6DED8] px-3.5 py-2 rounded-xl transition-all cursor-pointer shadow-2xs group"
+              title="Back to Licenses"
+              aria-label="Back to Licenses"
             >
-              Licenses
+              <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5 text-slate-500 group-hover:text-slate-800" />
+              <span>Back to Licenses</span>
             </button>
-            <span>/</span>
-            <span className="text-slate-800 font-bold">{activeGroup.name}</span>
           </div>
 
           {/* Group Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-4 border-b border-[#E6DED8]">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-[#E6DED8]">
             <div className="space-y-1">
               <div className="flex items-center gap-2.5">
                 <h1 className="text-2xl font-black text-[#1F2937] tracking-tight">{activeGroup.name}</h1>
@@ -732,30 +744,34 @@ const Licenses = () => {
               </div>
             </div>
 
-            {/* Header Actions: Edit Group, Delete Group, Add Plan */}
-            <div className="flex items-center gap-2 flex-wrap">
+            {/* Header Actions: Icon-only for Edit, Delete, and Add (with Tooltips & aria-labels) */}
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={handleOpenEditGroupModal}
-                className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-[#E6DED8] hover:border-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                title="Edit Group"
+                aria-label="Edit Group"
+                className="p-2 bg-white hover:bg-slate-50 text-slate-600 hover:text-blue-600 border border-[#E6DED8] hover:border-slate-300 rounded-xl transition-all cursor-pointer shadow-2xs"
               >
-                <Edit2 className="h-3.5 w-3.5 text-slate-500" />
-                <span>Edit Group</span>
+                <Edit2 className="h-4 w-4" />
               </button>
               <button
                 type="button"
                 onClick={() => setGroupToDelete(activeGroup)}
-                className="px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-600 border border-[#E6DED8] hover:border-rose-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                title="Delete Group"
+                aria-label="Delete Group"
+                className="p-2 bg-white hover:bg-rose-50 text-slate-600 hover:text-rose-600 border border-[#E6DED8] hover:border-rose-200 rounded-xl transition-all cursor-pointer shadow-2xs"
               >
-                Delete Group
+                <Trash2 className="h-4 w-4" />
               </button>
               <button
                 type="button"
                 onClick={() => handleOpenAddModal(activeGroup.id)}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#0B2545] hover:bg-[#134074] text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
+                title="Add Plan"
+                aria-label="Add Plan"
+                className="p-2 bg-[#0B2545] hover:bg-[#134074] text-white rounded-xl shadow-xs transition-all cursor-pointer"
               >
-                <Plus className="h-3.5 w-3.5" />
-                <span>Add Plan</span>
+                <Plus className="h-4 w-4" />
               </button>
             </div>
           </div>
@@ -820,8 +836,6 @@ const Licenses = () => {
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
                     {activeGroupFilteredPlans.map(lic => {
-                      const isMenuOpen = activeMenuLicId === lic.id;
-
                       return (
                         <tr key={lic.id} className="hover:bg-slate-50/70 transition-colors font-medium">
                           {/* Plan Name & Description */}
@@ -881,15 +895,15 @@ const Licenses = () => {
                             </span>
                           </td>
 
-                          {/* Actions: Renew, Edit, ⋮ More */}
+                          {/* Actions: Renew, Edit, ⋮ More (Icon-only with tooltips) */}
                           <td className="py-3 pl-3 text-right">
-                            <div className="flex items-center justify-end gap-1 relative">
+                            <div className="flex items-center justify-end gap-1">
                               {lic.status !== 'Deactivated' && (
                                 <button
                                   type="button"
                                   onClick={() => handleOpenRenewModal(lic)}
-                                  title="Renew plan"
-                                  aria-label="Renew plan"
+                                  title="Renew Plan"
+                                  aria-label="Renew Plan"
                                   className="p-1.5 hover:bg-emerald-50 text-slate-500 hover:text-emerald-700 rounded-lg transition-colors cursor-pointer"
                                 >
                                   <RotateCcw className="h-3.5 w-3.5" />
@@ -899,8 +913,8 @@ const Licenses = () => {
                               <button
                                 type="button"
                                 onClick={() => handleOpenEditModal(lic)}
-                                title="Edit plan & assignments"
-                                aria-label="Edit plan"
+                                title="Edit Plan"
+                                aria-label="Edit Plan"
                                 className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-blue-600 rounded-lg transition-colors cursor-pointer"
                               >
                                 <Edit2 className="h-3.5 w-3.5" />
@@ -910,58 +924,25 @@ const Licenses = () => {
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setActiveMenuLicId(isMenuOpen ? null : lic.id);
+                                  if (menuState?.id === lic.id) {
+                                    setMenuState(null);
+                                  } else {
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    setMenuState({
+                                      id: lic.id,
+                                      lic: lic,
+                                      isGroup: false,
+                                      top: rect.bottom + 6,
+                                      right: window.innerWidth - rect.right
+                                    });
+                                  }
                                 }}
-                                title="More actions"
-                                aria-label="More actions"
+                                title="More Actions"
+                                aria-label="More Actions"
                                 className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-slate-800 rounded-lg transition-colors cursor-pointer"
                               >
                                 <MoreVertical className="h-3.5 w-3.5" />
                               </button>
-
-                              {isMenuOpen && (
-                                <div
-                                  ref={menuRef}
-                                  className="absolute right-0 top-full mt-1 w-44 bg-white border border-[#E6DED8] rounded-xl shadow-xl py-1 z-40 text-xs font-semibold animate-scale-up"
-                                >
-                                  {lic.status !== 'Deactivated' && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setActiveMenuLicId(null);
-                                        triggerEmailAlert(lic.id);
-                                      }}
-                                      className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2 cursor-pointer transition-colors"
-                                    >
-                                      <Mail className="h-3.5 w-3.5 text-blue-600" />
-                                      <span>Send Expiry Alert</span>
-                                    </button>
-                                  )}
-
-                                  {lic.status !== 'Deactivated' && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleOpenDeactivateModal(lic)}
-                                      className="w-full px-3 py-1.5 text-left text-amber-700 hover:bg-amber-50 flex items-center gap-2 cursor-pointer transition-colors"
-                                    >
-                                      <Ban className="h-3.5 w-3.5 text-amber-600" />
-                                      <span>Deactivate Plan</span>
-                                    </button>
-                                  )}
-
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setActiveMenuLicId(null);
-                                      setLicToDelete(lic);
-                                    }}
-                                    className="w-full px-3 py-1.5 text-left text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer transition-colors"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5 text-rose-500" />
-                                    <span>Delete Plan</span>
-                                  </button>
-                                </div>
-                              )}
                             </div>
                           </td>
                         </tr>
@@ -1075,8 +1056,6 @@ const Licenses = () => {
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
                     {filteredGroups.map(group => {
-                      const isMenuOpen = activeMenuLicId === `group-${group.id}`;
-
                       return (
                         <tr
                           key={group.id}
@@ -1148,7 +1127,7 @@ const Licenses = () => {
 
                           {/* Actions: Edit icon, ⋮ More */}
                           <td className="py-3 pl-3 text-right" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-end gap-1 relative">
+                            <div className="flex items-center justify-end gap-1">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1169,44 +1148,25 @@ const Licenses = () => {
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setActiveMenuLicId(isMenuOpen ? null : `group-${group.id}`);
+                                  if (menuState?.id === `group-${group.id}`) {
+                                    setMenuState(null);
+                                  } else {
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    setMenuState({
+                                      id: `group-${group.id}`,
+                                      lic: group,
+                                      isGroup: true,
+                                      top: rect.bottom + 6,
+                                      right: window.innerWidth - rect.right
+                                    });
+                                  }
                                 }}
-                                title="More options"
-                                aria-label="More options"
+                                title="More Options"
+                                aria-label="More Options"
                                 className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-slate-800 rounded-lg transition-colors cursor-pointer"
                               >
                                 <MoreVertical className="h-3.5 w-3.5" />
                               </button>
-
-                              {isMenuOpen && (
-                                <div
-                                  ref={menuRef}
-                                  className="absolute right-0 top-full mt-1 w-36 bg-white border border-[#E6DED8] rounded-xl shadow-xl py-1 z-40 text-xs font-semibold animate-scale-up"
-                                >
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setActiveMenuLicId(null);
-                                      handleSelectGroup(group.id);
-                                    }}
-                                    className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer"
-                                  >
-                                    <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
-                                    <span>View Details</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setActiveMenuLicId(null);
-                                      setGroupToDelete(group);
-                                    }}
-                                    className="w-full px-3 py-1.5 text-left text-rose-600 hover:bg-rose-50 flex items-center gap-1.5 cursor-pointer"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5 text-rose-500" />
-                                    <span>Delete Group</span>
-                                  </button>
-                                </div>
-                              )}
                             </div>
                           </td>
                         </tr>
@@ -1248,8 +1208,6 @@ const Licenses = () => {
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
                     {filteredStandaloneLicenses.map(lic => {
-                      const isMenuOpen = activeMenuLicId === lic.id;
-
                       return (
                         <tr
                           key={lic.id}
@@ -1311,13 +1269,13 @@ const Licenses = () => {
 
                           {/* Actions: Renew, Edit, ⋮ More */}
                           <td className="py-3 pl-3 text-right">
-                            <div className="flex items-center justify-end gap-1 relative">
+                            <div className="flex items-center justify-end gap-1">
                               {lic.status !== 'Deactivated' && (
                                 <button
                                   type="button"
                                   onClick={() => handleOpenRenewModal(lic)}
-                                  title="Renew license"
-                                  aria-label="Renew license"
+                                  title="Renew License"
+                                  aria-label="Renew License"
                                   className="p-1.5 hover:bg-emerald-50 text-slate-500 hover:text-emerald-700 rounded-lg transition-colors cursor-pointer"
                                 >
                                   <RotateCcw className="h-3.5 w-3.5" />
@@ -1327,8 +1285,8 @@ const Licenses = () => {
                               <button
                                 type="button"
                                 onClick={() => handleOpenEditModal(lic)}
-                                title="Edit license"
-                                aria-label="Edit license"
+                                title="Edit License"
+                                aria-label="Edit License"
                                 className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-blue-600 rounded-lg transition-colors cursor-pointer"
                               >
                                 <Edit2 className="h-3.5 w-3.5" />
@@ -1338,58 +1296,25 @@ const Licenses = () => {
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setActiveMenuLicId(isMenuOpen ? null : lic.id);
+                                  if (menuState?.id === lic.id) {
+                                    setMenuState(null);
+                                  } else {
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    setMenuState({
+                                      id: lic.id,
+                                      lic: lic,
+                                      isGroup: false,
+                                      top: rect.bottom + 6,
+                                      right: window.innerWidth - rect.right
+                                    });
+                                  }
                                 }}
-                                title="More actions"
-                                aria-label="More actions"
+                                title="More Actions"
+                                aria-label="More Actions"
                                 className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-slate-800 rounded-lg transition-colors cursor-pointer"
                               >
                                 <MoreVertical className="h-3.5 w-3.5" />
                               </button>
-
-                              {isMenuOpen && (
-                                <div
-                                  ref={menuRef}
-                                  className="absolute right-0 top-full mt-1 w-44 bg-white border border-[#E6DED8] rounded-xl shadow-xl py-1 z-40 text-xs font-semibold animate-scale-up"
-                                >
-                                  {lic.status !== 'Deactivated' && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setActiveMenuLicId(null);
-                                        triggerEmailAlert(lic.id);
-                                      }}
-                                      className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2 cursor-pointer transition-colors"
-                                    >
-                                      <Mail className="h-3.5 w-3.5 text-blue-600" />
-                                      <span>Send Expiry Alert</span>
-                                    </button>
-                                  )}
-
-                                  {lic.status !== 'Deactivated' && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleOpenDeactivateModal(lic)}
-                                      className="w-full px-3 py-1.5 text-left text-amber-700 hover:bg-amber-50 flex items-center gap-2 cursor-pointer transition-colors"
-                                    >
-                                      <Ban className="h-3.5 w-3.5 text-amber-600" />
-                                      <span>Deactivate License</span>
-                                    </button>
-                                  )}
-
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setActiveMenuLicId(null);
-                                      setLicToDelete(lic);
-                                    }}
-                                    className="w-full px-3 py-1.5 text-left text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer transition-colors"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5 text-rose-500" />
-                                    <span>Delete License</span>
-                                  </button>
-                                </div>
-                              )}
                             </div>
                           </td>
                         </tr>
@@ -2369,6 +2294,96 @@ const Licenses = () => {
         onClose={() => setPassAuthModal({ isOpen: false, title: '', actionLabel: '', onSuccess: null })}
         onSuccess={passAuthModal.onSuccess || (() => {})}
       />
+
+      {/* ================= FLOATING PORTAL DROPDOWN MENU ================= */}
+      {menuState && createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            position: 'fixed',
+            top: `${menuState.top}px`,
+            right: `${menuState.right}px`,
+            zIndex: 99999
+          }}
+          className="w-48 bg-white border border-[#E6DED8] rounded-xl shadow-2xl py-1 text-xs font-semibold animate-scale-up"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {menuState.isGroup ? (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  const grpId = menuState.id.replace('group-', '');
+                  setMenuState(null);
+                  handleSelectGroup(grpId);
+                }}
+                className="w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer transition-colors"
+              >
+                <ChevronRight className="h-4 w-4 text-slate-400" />
+                <span>View Details</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const grp = menuState.lic;
+                  setMenuState(null);
+                  setGroupToDelete(grp);
+                }}
+                className="w-full px-3.5 py-2 text-left text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer transition-colors"
+              >
+                <Trash2 className="h-4 w-4 text-rose-500" />
+                <span>Delete Group</span>
+              </button>
+            </>
+          ) : (
+            <>
+              {menuState.lic.status !== 'Deactivated' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const id = menuState.lic.id;
+                    setMenuState(null);
+                    triggerEmailAlert(id);
+                  }}
+                  className="w-full px-3.5 py-2 text-left text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2 cursor-pointer transition-colors"
+                >
+                  <Mail className="h-4 w-4 text-blue-600" />
+                  <span>Send Expiry Alert</span>
+                </button>
+              )}
+
+              {menuState.lic.status !== 'Deactivated' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const lic = menuState.lic;
+                    setMenuState(null);
+                    handleOpenDeactivateModal(lic);
+                  }}
+                  className="w-full px-3.5 py-2 text-left text-amber-700 hover:bg-amber-50 flex items-center gap-2 cursor-pointer transition-colors"
+                >
+                  <Ban className="h-4 w-4 text-amber-600" />
+                  <span>Deactivate {menuState.lic.groupId ? 'Plan' : 'License'}</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  const lic = menuState.lic;
+                  setMenuState(null);
+                  setLicToDelete(lic);
+                }}
+                className="w-full px-3.5 py-2 text-left text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer transition-colors"
+              >
+                <Trash2 className="h-4 w-4 text-rose-500" />
+                <span>Delete {menuState.lic.groupId ? 'Plan' : 'License'}</span>
+              </button>
+            </>
+          )}
+        </div>,
+        document.body
+      )}
     </div>
   );
 };
