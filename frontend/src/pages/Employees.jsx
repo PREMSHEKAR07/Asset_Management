@@ -48,6 +48,7 @@ const Employees = () => {
     assets,
     departments,
     addDepartment,
+    updateDepartment,
     deleteDepartment,
     addEmployee,
     updateEmployee,
@@ -71,18 +72,16 @@ const Employees = () => {
     }
   }, [searchParams]);
   const [deleteConfirmEmp, setDeleteConfirmEmp] = useState(null);
-  const [deptFilter, setDeptFilter] = useState('All');
-  const [isDeptDropdownOpen, setIsDeptDropdownOpen] = useState(false);
-  const deptDropdownRef = useRef(null);
+  const [selectedDepts, setSelectedDepts] = useState([]);
+  const [deptSearchTerm, setDeptSearchTerm] = useState('');
+  const [deptToEdit, setDeptToEdit] = useState(null);
+  const [isAddDeptModalOpen, setIsAddDeptModalOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState('All'); // 'All' | 'Active' | 'Inactive'
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
   const statusDropdownRef = useRef(null);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (deptDropdownRef.current && !deptDropdownRef.current.contains(e.target)) {
-        setIsDeptDropdownOpen(false);
-      }
       if (statusDropdownRef.current && !statusDropdownRef.current.contains(e.target)) {
         setIsStatusDropdownOpen(false);
       }
@@ -130,8 +129,37 @@ const Employees = () => {
     ...(departments || []),
     ...employees.map(e => e.department).filter(Boolean)
   ]));
-  const departmentsList = ['All', ...uniqueDepts];
   const departmentsCount = uniqueDepts.length;
+
+  const toggleSelectAllDepts = () => {
+    setSelectedDepts([]);
+    setCurrentPage(1);
+  };
+
+  const toggleDept = (dept) => {
+    setCurrentPage(1);
+    const isAll = selectedDepts.length === 0 || selectedDepts.length === uniqueDepts.length;
+    if (isAll) {
+      setSelectedDepts([dept]);
+      return;
+    }
+    if (selectedDepts.some(d => d.toLowerCase() === dept.toLowerCase())) {
+      const next = selectedDepts.filter(d => d.toLowerCase() !== dept.toLowerCase());
+      setSelectedDepts(next);
+    } else {
+      const next = [...selectedDepts, dept];
+      if (next.length === uniqueDepts.length) {
+        setSelectedDepts([]);
+      } else {
+        setSelectedDepts(next);
+      }
+    }
+  };
+
+  const removeDeptFromFilter = (dept) => {
+    setCurrentPage(1);
+    setSelectedDepts(prev => prev.filter(d => d.toLowerCase() !== dept.toLowerCase()));
+  };
 
   const handleAddNewDepartment = async (e) => {
     if (e) e.preventDefault();
@@ -144,6 +172,7 @@ const Employees = () => {
     try {
       await addDepartment(trimmed);
       setNewDeptInput('');
+      setIsAddDeptModalOpen(false);
     } catch (err) {
       console.error("Error adding department:", err);
     } finally {
@@ -151,10 +180,32 @@ const Employees = () => {
     }
   };
 
+  const handleSaveEditDepartment = async (e) => {
+    if (e) e.preventDefault();
+    if (!deptToEdit) return;
+    const cleanOld = deptToEdit.oldName.trim();
+    const cleanNew = deptToEdit.newName.trim();
+    if (!cleanNew) {
+      showToast('Department name cannot be empty', 'error');
+      return;
+    }
+    if (cleanOld.toLowerCase() === cleanNew.toLowerCase()) {
+      setDeptToEdit(null);
+      return;
+    }
+    try {
+      await updateDepartment(cleanOld, cleanNew);
+      setSelectedDepts(prev => prev.map(d => d.toLowerCase() === cleanOld.toLowerCase() ? cleanNew : d));
+      setDeptToEdit(null);
+    } catch (err) {
+      console.error("Error editing department:", err);
+    }
+  };
+
   const [deptToDelete, setDeptToDelete] = useState(null);
 
   const handleDeleteDepartment = (e, deptName) => {
-    e.stopPropagation();
+    if (e) e.stopPropagation();
     setDeptToDelete(deptName);
   };
 
@@ -163,19 +214,17 @@ const Employees = () => {
     const target = deptToDelete;
     setDeptToDelete(null);
     await deleteDepartment(target);
-    if (deptFilter.toLowerCase() === target.toLowerCase()) {
-      setDeptFilter('All');
-    }
+    setSelectedDepts(prev => prev.filter(d => d.toLowerCase() !== target.toLowerCase()));
   };
 
-  // Filter employees
+  // Filter employees with OR logic for selected departments
   const filteredEmployees = employees.filter(emp => {
     const assigned = (emp.status || '').toLowerCase() === 'inactive' ? [] : assets.filter(a => a.assignedTo === emp.id);
     const searchString = `${emp.id} ${emp.name} ${emp.department} ${emp.designation} ${emp.email} ${emp.phone} ${emp.status} ${assigned.length} assets`.toLowerCase();
     const matchesSearch = searchString.includes(searchTerm.toLowerCase());
-    const matchesDept = deptFilter === 'All'
+    const matchesDept = (selectedDepts.length === 0 || selectedDepts.length === uniqueDepts.length)
       ? true
-      : (emp.department || '').trim().toLowerCase() === deptFilter.trim().toLowerCase();
+      : selectedDepts.some(d => (emp.department || '').trim().toLowerCase() === d.trim().toLowerCase());
     const matchesStatus = statusFilter === 'All'
       ? true
       : (emp.status || '').trim().toLowerCase() === statusFilter.trim().toLowerCase();
@@ -389,33 +438,27 @@ const Employees = () => {
     {
       key: 'id',
       label: 'Employee ID',
-      required: true,
-      description: 'Unique employee ID code (e.g. QEMP001, EMP102)',
+      required: false,
+      description: 'Employee ID code (optional, auto-generated if missing)',
       aliases: ['employee id', 'emp id', 'employee no', 'emp no', 'employee_id', 'empid', 'id', 'staff id', 'staff number', 'worker id', 'badge id'],
-      transform: (val) => String(val || '').trim().toUpperCase(),
-      validate: (val) => (!val || !String(val).trim() ? 'Employee ID is required' : null)
+      transform: (val) => String(val || '').trim().toUpperCase()
     },
     {
       key: 'name',
       label: 'Full Name',
-      required: true,
+      required: false,
+      defaultValue: 'Staff Member',
       description: 'Employee full name (e.g. John Doe, Rakesh Kore)',
       aliases: ['name', 'full name', 'employee name', 'worker name', 'staff name', 'first name', 'fullname'],
-      transform: (val) => String(val || '').trim(),
-      validate: (val) => (!val || !String(val).trim() ? 'Full Name is required' : null)
+      transform: (val) => String(val || '').trim() || 'Staff Member'
     },
     {
       key: 'email',
       label: 'Email Address',
-      required: true,
-      description: 'Corporate email address (e.g. user@company.com)',
+      required: false,
+      description: 'Corporate email address (optional, auto-generated if missing)',
       aliases: ['email', 'email address', 'mail', 'mail id', 'user email', 'work email', 'corporate email', 'emailid'],
-      transform: (val) => String(val || '').trim().toLowerCase(),
-      validate: (val) => {
-        if (!val || !String(val).trim()) return 'Email is required';
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(val).trim())) return 'Invalid email format';
-        return null;
-      }
+      transform: (val) => String(val || '').trim().toLowerCase()
     },
     {
       key: 'department',
@@ -483,31 +526,38 @@ const Employees = () => {
       const status = row.status || row.Status || 'Active';
       const location = row.location || row.Location || 'Hyderabad, India';
 
-      if (!rowId || !String(rowId).trim()) {
-        failedRows.push({ row: idx + 2, reason: 'Missing Employee ID' });
-        continue;
+      let cleanId = String(rowId || '').trim().toUpperCase();
+      if (!cleanId) {
+        let seq = 1;
+        while (localIds.has(`EMP-${String(seq).padStart(4, '0')}`)) {
+          seq++;
+        }
+        cleanId = `EMP-${String(seq).padStart(4, '0')}`;
+      } else if (localIds.has(cleanId)) {
+        let suffix = 1;
+        while (localIds.has(`${cleanId}_${suffix}`)) {
+          suffix++;
+        }
+        cleanId = `${cleanId}_${suffix}`;
       }
 
-      const cleanId = String(rowId).trim().toUpperCase();
-
-      // Check duplicate Employee ID against existing list
-      if (localIds.has(cleanId)) {
-        failedRows.push({ row: idx + 2, reason: `Employee ID "${cleanId}" already exists.` });
-        continue;
-      }
-
-      const cleanName = String(name || '').trim();
+      let cleanName = String(name || '').trim();
       if (!cleanName) {
-        failedRows.push({ row: idx + 2, reason: `Missing Employee Name for ID "${cleanId}"` });
-        continue;
+        cleanName = `Employee ${cleanId}`;
       }
 
-      const cleanEmail = email ? String(email).trim().toLowerCase() : `${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '')}_${cleanId.toLowerCase()}@company.com`;
+      let cleanEmail = email ? String(email).trim().toLowerCase() : '';
+      if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        cleanEmail = `${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'emp'}_${cleanId.toLowerCase()}@company.com`;
+      }
 
-      // Check duplicate email against existing list
       if (localEmails.has(cleanEmail)) {
-        failedRows.push({ row: idx + 2, reason: `Email "${cleanEmail}" is already in use.` });
-        continue;
+        let suffix = 1;
+        const [prefix, domain] = cleanEmail.split('@');
+        while (localEmails.has(`${prefix}_${suffix}@${domain || 'company.com'}`)) {
+          suffix++;
+        }
+        cleanEmail = `${prefix}_${suffix}@${domain || 'company.com'}`;
       }
 
       localIds.add(cleanId);
@@ -586,11 +636,11 @@ const Employees = () => {
           color="blue"
           onClick={() => {
             setStatusFilter('All');
-            setDeptFilter('All');
+            setSelectedDepts([]);
             setSearchTerm('');
             setCurrentPage(1);
           }}
-          isActive={statusFilter === 'All' && deptFilter === 'All' && !searchTerm}
+          isActive={statusFilter === 'All' && selectedDepts.length === 0 && !searchTerm}
         />
         <MetricCard
           icon={UserCheck}
@@ -599,11 +649,11 @@ const Employees = () => {
           color="green"
           onClick={() => {
             setStatusFilter('Active');
-            setDeptFilter('All');
+            setSelectedDepts([]);
             setSearchTerm('');
             setCurrentPage(1);
           }}
-          isActive={statusFilter === 'Active' && deptFilter === 'All'}
+          isActive={statusFilter === 'Active' && selectedDepts.length === 0}
         />
         <MetricCard
           icon={UserX}
@@ -612,11 +662,11 @@ const Employees = () => {
           color="orange"
           onClick={() => {
             setStatusFilter('Inactive');
-            setDeptFilter('All');
+            setSelectedDepts([]);
             setSearchTerm('');
             setCurrentPage(1);
           }}
-          isActive={statusFilter === 'Inactive' && deptFilter === 'All'}
+          isActive={statusFilter === 'Inactive' && selectedDepts.length === 0}
         />
         <MetricCard
           icon={FolderKey}
@@ -626,7 +676,7 @@ const Employees = () => {
           onClick={() => {
             setIsDeptModalOpen(true);
           }}
-          isActive={deptFilter !== 'All' || isDeptModalOpen}
+          isActive={selectedDepts.length > 0 || isDeptModalOpen}
         />
       </div>
 
@@ -638,19 +688,21 @@ const Employees = () => {
             <span className="text-[10px] font-extrabold bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full border border-blue-100 whitespace-nowrap shrink-0 inline-flex items-center">
               {filteredEmployees.length} Total
             </span>
-            {(statusFilter !== 'All' || deptFilter !== 'All' || searchTerm) && (
+            {(statusFilter !== 'All' || selectedDepts.length > 0 || searchTerm) && (
               <button
                 type="button"
                 onClick={() => {
                   setStatusFilter('All');
-                  setDeptFilter('All');
+                  setSelectedDepts([]);
                   setSearchTerm('');
                   setCurrentPage(1);
                 }}
                 className="text-[10px] font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 px-2.5 py-0.5 rounded-full border border-amber-200 cursor-pointer inline-flex items-center gap-1 transition-all"
                 title="Click to reset filters and view all employees"
               >
-                <span>Filter: {statusFilter !== 'All' ? statusFilter : ''} {deptFilter !== 'All' ? deptFilter : ''} {searchTerm ? `"${searchTerm}"` : ''}</span>
+                <span>
+                  Filter: {statusFilter !== 'All' ? statusFilter : ''} {selectedDepts.length > 0 ? selectedDepts.join(', ') : ''} {searchTerm ? `"${searchTerm}"` : ''}
+                </span>
                 <X className="h-3 w-3 text-amber-600" />
               </button>
             )}
@@ -670,38 +722,29 @@ const Employees = () => {
               />
             </div>
 
-            {/* Custom Department Filter Dropdown */}
-            <div className="relative" ref={deptDropdownRef}>
-              <button
-                type="button"
-                onClick={() => setIsDeptDropdownOpen(!isDeptDropdownOpen)}
-                className="flex items-center justify-between gap-1.5 px-3 py-2 border border-slate-200 rounded-xl text-xs bg-slate-50 hover:bg-slate-100 text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-bold cursor-pointer transition-all min-w-[130px]"
-              >
-                <span>{deptFilter === 'All' ? 'All Departments' : deptFilter}</span>
-                <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${isDeptDropdownOpen ? 'rotate-180' : ''}`} />
-              </button>
-
-              {isDeptDropdownOpen && (
-                <div className="absolute top-full left-0 mt-1.5 w-48 bg-white border border-slate-200/80 rounded-2xl shadow-xl py-1 z-30 animate-scale-in text-xs font-semibold text-slate-700">
-                  {departmentsList.map(dept => (
-                    <button
-                      key={dept}
-                      type="button"
-                      onClick={() => {
-                        setDeptFilter(dept);
-                        setCurrentPage(1);
-                        setIsDeptDropdownOpen(false);
-                      }}
-                      className={`w-full text-left px-3.5 py-2 hover:bg-slate-50 transition-colors flex items-center justify-between ${deptFilter === dept ? 'bg-blue-50/50 text-blue-600 font-bold' : ''
-                        }`}
-                    >
-                      <span>{dept === 'All' ? 'All Departments' : dept}</span>
-                      {deptFilter === dept && <Check className="h-3.5 w-3.5 text-blue-600" />}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* Existing Department Button */}
+            <button
+              type="button"
+              onClick={() => setIsDeptModalOpen(true)}
+              className={`flex items-center justify-between gap-2 px-3 py-2 border rounded-xl text-xs font-bold cursor-pointer transition-all min-w-[130px] ${
+                selectedDepts.length > 0
+                  ? 'border-blue-300 bg-blue-50/70 text-blue-700 hover:bg-blue-100/70'
+                  : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600'
+              }`}
+              title="Open Department Filter & Management"
+            >
+              <div className="flex items-center gap-1.5 truncate">
+                <Building className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                <span className="truncate">
+                  {selectedDepts.length === 0 || selectedDepts.length === uniqueDepts.length
+                    ? 'Department'
+                    : selectedDepts.length === 1
+                      ? selectedDepts[0]
+                      : `Department (${selectedDepts.length})`}
+                </span>
+              </div>
+              <ChevronDown className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+            </button>
 
             {/* Custom Status Filter Dropdown */}
             <div className="relative" ref={statusDropdownRef}>
@@ -1035,163 +1078,283 @@ const Employees = () => {
           </div>
         )}
 
-        {/* Departments Overview Modal */}
+        {/* Department Management & Filter Popup */}
         {isDeptModalOpen && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-[2rem] border border-slate-100 shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden animate-fade-in relative">
-
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden animate-fade-in relative">
               {/* Header */}
-              <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600">
-                    <FolderKey className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-slate-800">
-                      Departments Overview
-                    </h3>
-                    <p className="text-xs text-slate-400 font-semibold mt-0.5">
-                      Click any department to populate and filter the employee list
-                    </p>
-                  </div>
-                </div>
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                <h3 className="text-sm font-bold text-slate-800">Departments</h3>
                 <button
+                  type="button"
                   onClick={() => setIsDeptModalOpen(false)}
-                  className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-all cursor-pointer shrink-0"
+                  className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                  title="Close"
+                  aria-label="Close"
                 >
-                  <X className="h-5 w-5" />
+                  <X className="h-4 w-4" />
                 </button>
               </div>
 
-              {/* Department Grid */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                {/* Add New Department Form */}
-                <form onSubmit={handleAddNewDepartment} className="flex items-center gap-2 bg-slate-50 border border-slate-200/80 rounded-2xl p-2.5">
-                  <div className="relative flex-1">
-                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                      <PlusCircle className="h-4 w-4 text-blue-500" />
+              {/* Search Departments */}
+              <div className="px-4 pt-3.5 pb-2">
+                <label className="block text-[11px] font-semibold text-slate-500 mb-1">Search departments</label>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <Search className="h-3.5 w-3.5" />
+                  </span>
+                  <input
+                    type="text"
+                    value={deptSearchTerm}
+                    onChange={(e) => setDeptSearchTerm(e.target.value)}
+                    placeholder="Search departments..."
+                    className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                  />
+                  {deptSearchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => setDeptSearchTerm('')}
+                      className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Selected Departments Display */}
+              <div className="px-4 py-2 border-b border-slate-100 space-y-1.5">
+                <span className="text-[11px] font-bold text-slate-500 block">Selected</span>
+                <div className="flex flex-wrap gap-1.5 min-h-[26px] items-center">
+                  {(selectedDepts.length === 0 || selectedDepts.length === uniqueDepts.length) ? (
+                    <span className="inline-flex items-center text-[11px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
+                      All Departments
                     </span>
-                    <input
-                      type="text"
-                      value={newDeptInput}
-                      onChange={e => setNewDeptInput(e.target.value)}
-                      placeholder="Enter new department name (e.g. Operations, Legal)..."
-                      className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={isAddingDept}
-                    className="px-5 py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-extrabold text-xs rounded-xl shadow-md shadow-blue-500/25 transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
-                  >
-                    <Plus className="h-4 w-4 stroke-[2.5]" />
-                    <span>{isAddingDept ? 'Adding...' : 'Add Department'}</span>
-                  </button>
-                </form>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                  {uniqueDepts.map(dept => {
-                    const deptEmpCount = employees.filter(e => (e.department || '').trim().toLowerCase() === dept.trim().toLowerCase()).length;
-                    const deptActiveCount = employees.filter(e => (e.department || '').trim().toLowerCase() === dept.trim().toLowerCase() && (e.status || '').trim().toLowerCase() === 'active').length;
-                    const deptInactiveCount = employees.filter(e => (e.department || '').trim().toLowerCase() === dept.trim().toLowerCase() && (e.status || '').trim().toLowerCase() === 'inactive').length;
-                    const isSelected = deptFilter.trim().toLowerCase() === dept.trim().toLowerCase();
-
-                    return (
-                      <div
+                  ) : (
+                    selectedDepts.map(dept => (
+                      <span
                         key={dept}
-                        onClick={() => {
-                          setDeptFilter(dept);
-                          setCurrentPage(1);
-                          setIsDeptModalOpen(false);
-                        }}
-                        className={`p-4 rounded-2xl border ${isSelected
-                            ? 'border-blue-500 bg-blue-50/40 ring-2 ring-blue-500/20 shadow-sm'
-                            : 'border-slate-200 bg-white hover:border-blue-300 hover:shadow-md'
-                          } transition-all cursor-pointer flex flex-col justify-between group relative`}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md"
                       >
-                        <div className="flex items-center justify-between mb-3">
-                          <span className="font-extrabold text-sm text-slate-800 group-hover:text-blue-600 transition-colors">{dept}</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
-                              {deptEmpCount} {deptEmpCount === 1 ? 'Employee' : 'Employees'}
-                            </span>
+                        <span className="truncate max-w-[150px]">{dept}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeDeptFromFilter(dept)}
+                          className="text-slate-400 hover:text-slate-800 transition-colors cursor-pointer"
+                          title={`Remove ${dept}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Department List */}
+              <div className="flex-1 overflow-y-auto px-4 py-2 space-y-1 divide-y divide-slate-100/70">
+                {/* All Departments Option */}
+                <div
+                  onClick={toggleSelectAllDepts}
+                  className="pt-1 pb-2 flex items-center justify-between hover:bg-slate-50/80 px-2 py-1.5 rounded-xl cursor-pointer transition-colors"
+                >
+                  <label className="flex items-center gap-2.5 cursor-pointer flex-1">
+                    <input
+                      type="checkbox"
+                      checked={selectedDepts.length === 0 || selectedDepts.length === uniqueDepts.length}
+                      onChange={toggleSelectAllDepts}
+                      className="rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer h-3.5 w-3.5"
+                    />
+                    <div className="min-w-0">
+                      <span className="text-xs font-bold text-slate-800 block">All Departments</span>
+                      <span className="text-[10px] text-slate-400 font-medium block">Show all employees</span>
+                    </div>
+                  </label>
+                </div>
+
+                {/* Individual Departments */}
+                <div className="pt-1 space-y-0.5">
+                  {uniqueDepts
+                    .filter(dept => dept.toLowerCase().includes(deptSearchTerm.trim().toLowerCase()))
+                    .map(dept => {
+                      const deptEmpCount = employees.filter(e => (e.department || '').trim().toLowerCase() === dept.trim().toLowerCase()).length;
+                      const isSelected = selectedDepts.some(d => d.toLowerCase() === dept.toLowerCase());
+
+                      return (
+                        <div
+                          key={dept}
+                          onClick={() => toggleDept(dept)}
+                          className={`flex items-center justify-between px-2 py-1.5 rounded-xl cursor-pointer transition-colors group ${
+                            isSelected ? 'bg-blue-50/40' : 'hover:bg-slate-50'
+                          }`}
+                        >
+                          <label className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0 pr-2">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleDept(dept)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer h-3.5 w-3.5 shrink-0"
+                            />
+                            <div className="min-w-0">
+                              <span className="text-xs font-bold text-slate-800 block truncate" title={dept}>
+                                {dept}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-medium block">
+                                {deptEmpCount} {deptEmpCount === 1 ? 'employee' : 'employees'}
+                              </span>
+                            </div>
+                          </label>
+
+                          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => setDeptToEdit({ oldName: dept, newName: dept })}
+                              tooltip="Edit department"
+                              aria-label="Edit department"
+                              title="Edit department"
+                              className="p-1 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
                             <button
                               type="button"
                               onClick={(e) => handleDeleteDepartment(e, dept)}
-                              title={`Delete ${dept} department`}
-                              className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-500 hover:text-rose-700 border border-rose-200/60 transition-all cursor-pointer shadow-xs"
+                              tooltip="Delete department"
+                              aria-label="Delete department"
+                              title="Delete department"
+                              className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           </div>
                         </div>
+                      );
+                    })}
 
-                        <div className="text-[11px] text-slate-500 flex items-center justify-between font-medium pt-2 border-t border-slate-100/80 gap-2">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setDeptFilter(dept);
-                                setStatusFilter('Active');
-                                setCurrentPage(1);
-                                setIsDeptModalOpen(false);
-                              }}
-                              className={`px-2 py-0.5 rounded-md font-bold text-[10px] transition-colors cursor-pointer border ${isSelected && statusFilter === 'Active'
-                                  ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
-                                  : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200/60'
-                                }`}
-                              title={`Filter Active employees in ${dept}`}
-                            >
-                              Active: {deptActiveCount}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setDeptFilter(dept);
-                                setStatusFilter('Inactive');
-                                setCurrentPage(1);
-                                setIsDeptModalOpen(false);
-                              }}
-                              className={`px-2 py-0.5 rounded-md font-bold text-[10px] transition-colors cursor-pointer border ${isSelected && statusFilter === 'Inactive'
-                                  ? 'bg-rose-600 border-rose-600 text-white shadow-xs'
-                                  : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200/60'
-                                }`}
-                              title={`Filter Inactive employees in ${dept}`}
-                            >
-                              Inactive: {deptInactiveCount}
-                            </button>
-                          </div>
-                          <span className="text-blue-600 font-bold group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5 text-xs whitespace-nowrap">
-                            Filter &rarr;
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {uniqueDepts.filter(dept => dept.toLowerCase().includes(deptSearchTerm.trim().toLowerCase())).length === 0 && (
+                    <div className="py-6 text-center text-xs text-slate-400">
+                      No matching departments found.
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* Footer */}
-              <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+              <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
                 <button
+                  type="button"
                   onClick={() => {
-                    setDeptFilter('All');
-                    setCurrentPage(1);
-                    setIsDeptModalOpen(false);
+                    setNewDeptInput('');
+                    setIsAddDeptModalOpen(true);
                   }}
-                  className="py-2 px-4 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
+                  className="px-3 py-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 bg-white hover:bg-blue-50/50 border border-slate-200 rounded-xl transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
                 >
-                  Reset Filter (Show All Departments)
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Add Department</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => setIsDeptModalOpen(false)}
-                  className="py-2 px-5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
+                  className="px-4 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl shadow-2xs transition-all cursor-pointer"
                 >
                   Close
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add Department Sub-Modal */}
+        {isAddDeptModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-60 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-sm p-5 space-y-4 animate-scale-in">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h4 className="text-sm font-bold text-slate-800">Add Department</h4>
+                <button
+                  type="button"
+                  onClick={() => setIsAddDeptModalOpen(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <form onSubmit={handleAddNewDepartment} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Department Name *</label>
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    value={newDeptInput}
+                    onChange={(e) => setNewDeptInput(e.target.value)}
+                    placeholder="e.g. Quality Assurance"
+                    className="w-full p-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddDeptModalOpen(false)}
+                    className="px-3.5 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl border border-slate-200 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isAddingDept}
+                    className="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs cursor-pointer disabled:opacity-50"
+                  >
+                    {isAddingDept ? 'Adding...' : 'Add'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Department Sub-Modal */}
+        {deptToEdit && (
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-60 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-sm p-5 space-y-4 animate-scale-in">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h4 className="text-sm font-bold text-slate-800">Edit Department</h4>
+                <button
+                  type="button"
+                  onClick={() => setDeptToEdit(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <form onSubmit={handleSaveEditDepartment} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Department Name *</label>
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    value={deptToEdit.newName}
+                    onChange={(e) => setDeptToEdit({ ...deptToEdit, newName: e.target.value })}
+                    className="w-full p-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setDeptToEdit(null)}
+                    className="px-3.5 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl border border-slate-200 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs cursor-pointer"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}
@@ -1562,8 +1725,8 @@ const Employees = () => {
                     {selectedEmployee?.name}
                   </h3>
                   <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border ${(selectedEmployee?.status || 'Active') === 'Active'
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-rose-50 text-rose-700 border-rose-200'
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-rose-50 text-rose-700 border-rose-200'
                     }`}>
                     {selectedEmployee?.status || 'Active'}
                   </span>
@@ -1713,8 +1876,8 @@ const Employees = () => {
                         <div className="flex items-center gap-2 shrink-0">
                           {asset.condition && (
                             <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-md border ${asset.condition === 'Good' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                asset.condition === 'Working' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                  'bg-rose-50 text-rose-700 border-rose-200'
+                              asset.condition === 'Working' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                'bg-rose-50 text-rose-700 border-rose-200'
                               }`}>
                               {asset.condition}
                             </span>

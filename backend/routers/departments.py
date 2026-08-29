@@ -71,6 +71,41 @@ def add_department(
 
     return fetch_all_departments(db)
 
+@router.put("/{department_name}", response_model=List[str])
+def update_department(
+    department_name: str,
+    payload: DepartmentCreate,
+    current_user = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    old_name = (department_name or "").strip()
+    new_name = (payload.name or "").strip()
+    if not old_name or not new_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Department names cannot be empty")
+
+    try:
+        # Check if department exists in departments table
+        existing = db.execute(text("SELECT id FROM departments WHERE LOWER(name) = LOWER(:old_name)"), {"old_name": old_name}).first()
+        if existing:
+            db.execute(text("UPDATE departments SET name = :new_name WHERE id = :id"), {"new_name": new_name, "id": existing[0]})
+        else:
+            count = db.execute(text("SELECT COUNT(*) FROM departments")).scalar() or 0
+            dept_id = f"DEP{str(count + 1).zfill(3)}"
+            while db.execute(text("SELECT id FROM departments WHERE id = :id"), {"id": dept_id}).first():
+                count += 1
+                dept_id = f"DEP{str(count + 1).zfill(3)}"
+            db.execute(text("INSERT INTO departments (id, name, created_by) VALUES (:id, :name, :created_by)"), {"id": dept_id, "name": new_name, "created_by": current_user.name})
+
+        # Update all employees belonging to old_name
+        db.execute(text("UPDATE employees SET department = :new_name WHERE LOWER(department) = LOWER(:old_name)"), {"new_name": new_name, "old_name": old_name})
+        db.commit()
+        log_activity(db, current_user.name, "Edit Department", f"Renamed department '{old_name}' to '{new_name}'")
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to update department: {str(e)}")
+
+    return fetch_all_departments(db)
+
 @router.delete("/{department_name}", response_model=List[str])
 def delete_department(
     department_name: str,
@@ -93,3 +128,4 @@ def delete_department(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to delete department: {str(e)}")
 
     return fetch_all_departments(db)
+

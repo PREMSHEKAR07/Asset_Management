@@ -10,7 +10,7 @@ export const useAssetManager = () => {
   return context;
 };
 const defaultApiHost = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost';
-const API_URL = (import.meta.env.VITE_API_URL || `http://${defaultApiHost}:8001`).replace(/\/$/, "");
+const API_URL = (import.meta.env.VITE_API_URL || `http://${defaultApiHost}:8000`).replace(/\/$/, "");
 
 if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) {
   console.warn(
@@ -1091,6 +1091,39 @@ export const AssetProvider = ({ children }) => {
       showToast(`Department "${cleanName}" added successfully!`, 'success');
     }
   };
+  const updateDepartment = async (oldName, newName) => {
+    const cleanOld = (oldName || '').trim();
+    const cleanNew = (newName || '').trim();
+    if (!cleanOld || !cleanNew || cleanOld.toLowerCase() === cleanNew.toLowerCase()) return;
+    try {
+      const updatedList = await apiFetch(`/api/departments/${encodeURIComponent(cleanOld)}`, "PUT", { name: cleanNew });
+      if (Array.isArray(updatedList) && updatedList.length > 0) {
+        setDepartments(updatedList);
+      } else {
+        setDepartments(prev => prev.map(d => d.toLowerCase() === cleanOld.toLowerCase() ? cleanNew : d));
+      }
+      setEmployees(prev => prev.map(emp => {
+        if ((emp.department || '').trim().toLowerCase() === cleanOld.toLowerCase()) {
+          return { ...emp, department: cleanNew };
+        }
+        return emp;
+      }));
+      showToast(`Department "${cleanOld}" renamed to "${cleanNew}"!`, 'success');
+      const empList = await apiFetch("/api/employees").catch(() => null);
+      if (Array.isArray(empList)) setEmployees(empList);
+    } catch (err) {
+      console.error("Failed to update department:", err);
+      setDepartments(prev => prev.map(d => d.toLowerCase() === cleanOld.toLowerCase() ? cleanNew : d));
+      setEmployees(prev => prev.map(emp => {
+        if ((emp.department || '').trim().toLowerCase() === cleanOld.toLowerCase()) {
+          return { ...emp, department: cleanNew };
+        }
+        return emp;
+      }));
+      showToast(`Department "${cleanOld}" renamed to "${cleanNew}"`, 'success');
+    }
+  };
+
   const deleteDepartment = async (name) => {
     const cleanName = (name || '').trim();
     if (!cleanName) return;
@@ -1117,6 +1150,7 @@ export const AssetProvider = ({ children }) => {
       assets,
       departments,
       addDepartment,
+      updateDepartment,
       deleteDepartment,
       repairs,
       notifications,

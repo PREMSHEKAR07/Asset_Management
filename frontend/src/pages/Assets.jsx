@@ -410,16 +410,15 @@ const Assets = () => {
     });
   };
 
-  // Asset Database Fields Schema for Dynamic Excel Mapping
+  // Asset Database Fields Schema for Dynamic Excel Mapping (All fields optional)
   const assetImportFields = [
     {
       key: 'id',
       label: 'Asset ID',
-      required: true,
-      description: 'Unique asset ID code (e.g. QITS0001, AST-101)',
+      required: false,
+      description: 'Asset ID code (optional, auto-generated if missing)',
       aliases: ['asset id', 'assetid', 'asset no', 'asset number', 'tag', 'asset tag', 'barcode', 'item id', 'id', 'asset_id', 'code', 'hardware id'],
-      transform: (val) => String(val || '').trim().toUpperCase(),
-      validate: (val) => (!val || !String(val).trim() ? 'Asset ID is required' : null)
+      transform: (val) => String(val || '').trim().toUpperCase()
     },
     {
       key: 'type',
@@ -505,17 +504,19 @@ const Assets = () => {
 
       if (type === 'Desktop') continue;
 
-      if (!rowId || !String(rowId).trim()) {
-        failedRows.push({ row: idx + 2, reason: 'Missing Asset ID' });
-        continue;
-      }
-
-      const cleanId = String(rowId).trim().toUpperCase();
-
-      // Check duplicate Asset ID against existing list
-      if (localIds.has(cleanId)) {
-        failedRows.push({ row: idx + 2, reason: `Asset ID "${cleanId}" already exists.` });
-        continue;
+      let cleanId = String(rowId || '').trim().toUpperCase();
+      if (!cleanId) {
+        let seq = 1;
+        while (localIds.has(`AST-${String(seq).padStart(4, '0')}`)) {
+          seq++;
+        }
+        cleanId = `AST-${String(seq).padStart(4, '0')}`;
+      } else if (localIds.has(cleanId)) {
+        let suffix = 1;
+        while (localIds.has(`${cleanId}_${suffix}`)) {
+          suffix++;
+        }
+        cleanId = `${cleanId}_${suffix}`;
       }
 
       localIds.add(cleanId);

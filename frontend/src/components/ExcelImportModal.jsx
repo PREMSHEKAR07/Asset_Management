@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo } from 'react';
-import { 
-  X, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, Download, 
+import {
+  X, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, Download,
   RefreshCw, ArrowRight, ArrowLeft, Check, AlertCircle, Layers
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -82,13 +82,15 @@ const ExcelImportModal = ({
   const [importSummary, setImportSummary] = useState(null);
   const [dragActive, setDragActive] = useState(false);
 
-  // Fallback default fields if none passed
+  // Fallback default fields if none passed (all optional)
   const activeFields = useMemo(() => {
-    if (fields && fields.length > 0) return fields;
+    if (fields && fields.length > 0) {
+      return fields.map(f => ({ ...f, required: false }));
+    }
     return sampleColumns.map(col => ({
       key: col.toLowerCase().replace(/[^a-z0-9]/g, '_'),
       label: col,
-      required: col.toLowerCase().includes('id') || col.toLowerCase().includes('name') || col.toLowerCase().includes('type'),
+      required: false,
       aliases: [col.toLowerCase(), col.toLowerCase().replace(/\s+/g, '')]
     }));
   }, [fields, sampleColumns]);
@@ -129,10 +131,8 @@ const ExcelImportModal = ({
 
         item[field.key] = val;
 
-        // Validation rule check
-        if (field.required && (!val || String(val).trim() === "")) {
-          rowErrors.push(`${field.label} is required`);
-        } else if (field.validate && val !== undefined && val !== null && String(val).trim() !== "") {
+        // Validation rule check (only if non-empty and validator exists)
+        if (field.validate && val !== undefined && val !== null && String(val).trim() !== "") {
           const err = field.validate(val, row, rowIdx, existingRecords);
           if (err) rowErrors.push(err);
         }
@@ -275,7 +275,7 @@ const ExcelImportModal = ({
           initialMapping[field.key] = bestMatch;
           usedColumns.add(bestMatch);
         } else {
-          initialMapping[field.key] = field.required ? "" : "__DO_NOT_IMPORT__";
+          initialMapping[field.key] = "__DO_NOT_IMPORT__";
         }
       });
 
@@ -370,16 +370,6 @@ const ExcelImportModal = ({
 
   // Validate Mapping & Move to Preview
   const handleContinueToPreview = () => {
-    // Check if any required field is unmapped
-    const unmappedRequired = activeFields.filter(
-      f => f.required && (!columnMapping[f.key] || columnMapping[f.key] === "__DO_NOT_IMPORT__")
-    );
-
-    if (unmappedRequired.length > 0) {
-      setMappingError(`Please map all required database fields: ${unmappedRequired.map(f => f.label).join(', ')}`);
-      return;
-    }
-
     setMappingError('');
     setCurrentStep('preview');
   };
@@ -417,7 +407,7 @@ const ExcelImportModal = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={handleClose} />
       <div className="relative bg-white border border-slate-200 w-full max-w-2xl rounded-3xl shadow-2xl p-6 z-10 space-y-5 animate-scale-in max-h-[92vh] flex flex-col">
-        
+
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
           <div className="flex items-center gap-2.5">
@@ -434,7 +424,7 @@ const ExcelImportModal = ({
               </p>
             </div>
           </div>
-          <button 
+          <button
             onClick={handleClose}
             className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer transition-colors"
           >
@@ -445,30 +435,26 @@ const ExcelImportModal = ({
         {/* Step Progress Tracker */}
         <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border border-slate-200/80 rounded-2xl text-[11px] font-bold text-slate-500 shrink-0">
           <div className={`flex items-center gap-1.5 ${currentStep === 'upload' ? 'text-blue-600' : selectedFile ? 'text-emerald-600' : ''}`}>
-            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
-              currentStep === 'upload' ? 'bg-blue-600 text-white' : selectedFile ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
-            }`}>1</span>
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${currentStep === 'upload' ? 'bg-blue-600 text-white' : selectedFile ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
+              }`}>1</span>
             <span>Upload</span>
           </div>
           <ArrowRight className="h-3 w-3 text-slate-300" />
           <div className={`flex items-center gap-1.5 ${currentStep === 'mapping' ? 'text-blue-600' : (currentStep === 'preview' || currentStep === 'results') ? 'text-emerald-600' : ''}`}>
-            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
-              currentStep === 'mapping' ? 'bg-blue-600 text-white' : (currentStep === 'preview' || currentStep === 'results') ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
-            }`}>2</span>
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${currentStep === 'mapping' ? 'bg-blue-600 text-white' : (currentStep === 'preview' || currentStep === 'results') ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
+              }`}>2</span>
             <span>Map Columns</span>
           </div>
           <ArrowRight className="h-3 w-3 text-slate-300" />
           <div className={`flex items-center gap-1.5 ${currentStep === 'preview' ? 'text-blue-600' : currentStep === 'results' ? 'text-emerald-600' : ''}`}>
-            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
-              currentStep === 'preview' ? 'bg-blue-600 text-white' : currentStep === 'results' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
-            }`}>3</span>
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${currentStep === 'preview' ? 'bg-blue-600 text-white' : currentStep === 'results' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
+              }`}>3</span>
             <span>Preview</span>
           </div>
           <ArrowRight className="h-3 w-3 text-slate-300" />
           <div className={`flex items-center gap-1.5 ${currentStep === 'results' ? 'text-blue-600' : ''}`}>
-            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
-              currentStep === 'results' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'
-            }`}>4</span>
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${currentStep === 'results' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'
+              }`}>4</span>
             <span>Import</span>
           </div>
         </div>
@@ -495,19 +481,18 @@ const ExcelImportModal = ({
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
-                dragActive 
-                  ? 'border-blue-500 bg-blue-50/50' 
-                  : selectedFile 
-                  ? 'border-emerald-400 bg-emerald-50/20' 
-                  : 'border-slate-200 hover:border-slate-300 bg-slate-50/50'
-              }`}
+              className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${dragActive
+                  ? 'border-blue-500 bg-blue-50/50'
+                  : selectedFile
+                    ? 'border-emerald-400 bg-emerald-50/20'
+                    : 'border-slate-200 hover:border-slate-300 bg-slate-50/50'
+                }`}
             >
-              <input 
+              <input
                 ref={fileInputRef}
-                type="file" 
-                accept=".xlsx, .xls, .csv" 
-                className="hidden" 
+                type="file"
+                accept=".xlsx, .xls, .csv"
+                className="hidden"
                 onChange={(e) => e.target.files && handleFileSelected(e.target.files[0])}
               />
               {selectedFile ? (
@@ -539,11 +524,10 @@ const ExcelImportModal = ({
                       key={sheet}
                       type="button"
                       onClick={() => handleSheetChange(sheet)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                        selectedSheet === sheet
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${selectedSheet === sheet
                           ? 'bg-blue-600 text-white shadow-sm'
                           : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-                      }`}
+                        }`}
                     >
                       {sheet}
                     </button>
@@ -601,24 +585,17 @@ const ExcelImportModal = ({
                 {activeFields.map(field => {
                   const currentMapped = columnMapping[field.key] || "";
                   const samples = sampleValuesMap[currentMapped] || [];
-                  const isUnmappedRequired = field.required && (!currentMapped || currentMapped === "__DO_NOT_IMPORT__");
 
                   return (
-                    <div 
-                      key={field.key} 
-                      className={`grid grid-cols-12 items-center p-3 transition-colors ${
-                        isUnmappedRequired ? 'bg-amber-50/30' : 'hover:bg-slate-50/50'
-                      }`}
+                    <div
+                      key={field.key}
+                      className="grid grid-cols-12 items-center p-3 transition-colors hover:bg-slate-50/50"
                     >
                       {/* Left: DB Field Info */}
                       <div className="col-span-5 pr-2">
                         <div className="flex items-center gap-1">
                           <span className="font-bold text-slate-800 text-xs">{field.label}</span>
-                          {field.required ? (
-                            <span className="text-rose-500 font-black text-xs" title="Required Field">*</span>
-                          ) : (
-                            <span className="text-[9px] text-slate-400 font-semibold">(Optional)</span>
-                          )}
+                          <span className="text-[9px] text-slate-400 font-semibold">(Optional)</span>
                         </div>
                         {field.description && (
                           <p className="text-[10px] text-slate-400 truncate">{field.description}</p>
@@ -630,26 +607,21 @@ const ExcelImportModal = ({
                         <select
                           value={currentMapped}
                           onChange={(e) => handleMappingChange(field.key, e.target.value)}
-                          className={`w-full text-xs font-semibold px-2.5 py-1.5 rounded-xl border bg-white cursor-pointer transition-all ${
-                            isUnmappedRequired 
-                              ? 'border-amber-400 bg-amber-50/20 text-slate-800' 
-                              : currentMapped && currentMapped !== "__DO_NOT_IMPORT__"
+                          className={`w-full text-xs font-semibold px-2.5 py-1.5 rounded-xl border bg-white cursor-pointer transition-all ${currentMapped && currentMapped !== "__DO_NOT_IMPORT__"
                               ? 'border-blue-300 text-slate-800 font-bold'
                               : 'border-slate-200 text-slate-500'
-                          }`}
+                            }`}
                         >
+                          <option value="__DO_NOT_IMPORT__" className="text-slate-400">
+                            ✕ Do not import (Leave default)
+                          </option>
                           <option value="">-- Select Excel Column --</option>
-                          {!field.required && (
-                            <option value="__DO_NOT_IMPORT__" className="text-slate-400">
-                              ✕ Do not import (Leave default)
-                            </option>
-                          )}
                           {excelColumns.map(col => {
                             const isUsedElsewhere = mappedExcelColumnsSet.has(col) && currentMapped !== col;
                             return (
-                              <option 
-                                key={col} 
-                                value={col} 
+                              <option
+                                key={col}
+                                value={col}
                                 disabled={isUsedElsewhere}
                                 className={isUsedElsewhere ? 'text-slate-300' : 'text-slate-800'}
                               >
@@ -681,7 +653,7 @@ const ExcelImportModal = ({
 
             {/* Unmapped Ignored Columns Note */}
             <p className="text-[10px] text-slate-400">
-              * Database fields marked with an asterisk are required. Extra columns from your spreadsheet that are not mapped will be safely ignored.
+              * All fields are optional. Missing or unmapped columns will automatically be filled with default values.
             </p>
 
             {/* Action Buttons */}
@@ -836,9 +808,8 @@ const ExcelImportModal = ({
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
               <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
                 <span className="font-extrabold text-slate-800 text-sm">Import Results Summary</span>
-                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                  importSummary.failedRows.length === 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
-                }`}>
+                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${importSummary.failedRows.length === 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
+                  }`}>
                   {importSummary.failedRows.length === 0 ? 'Success' : 'Completed with Skipped Rows'}
                 </span>
               </div>
