@@ -4,29 +4,22 @@ import {
   Key,
   Plus,
   Search,
-  Clock,
   AlertTriangle,
-  CheckCircle,
-  XCircle,
   X,
   Mail,
   Calendar,
   Edit2,
   Trash2,
-  Bell,
   RotateCcw,
   Ban,
-  DollarSign,
   Users,
   Folder,
   FolderPlus,
   Layers,
-  ArrowLeft,
   ChevronRight,
   MoreVertical
 } from 'lucide-react';
 import { useAssetManager } from '../hooks/useAssetManager';
-import MetricCard from '../components/MetricCard';
 import AdminPasswordModal from '../components/AdminPasswordModal';
 
 const Licenses = () => {
@@ -504,14 +497,45 @@ const Licenses = () => {
     });
   }, [licenses]);
 
-  // Calculate KPI Metrics
+  // Next Expiry Helper for Subscription Groups
+  const getGroupNextExpiry = (plans) => {
+    if (!plans || plans.length === 0) return null;
+    
+    // Active, non-deactivated plans with end date >= today (remainingDays >= 0)
+    const upcomingPlans = plans
+      .filter(p => !p.isDeactivated && p.remainingDays >= 0)
+      .sort((a, b) => a.remainingDays - b.remainingDays);
+
+    if (upcomingPlans.length === 0) return null;
+
+    const nextPlan = upcomingPlans[0];
+    const days = nextPlan.remainingDays;
+    let relativeText = '';
+    if (days === 0) {
+      relativeText = 'Expires today';
+    } else if (days === 1) {
+      relativeText = 'in 1 day';
+    } else {
+      relativeText = `in ${days} days`;
+    }
+
+    return {
+      dateStr: nextPlan.endDate,
+      remainingDays: days,
+      relativeText,
+      isExpiringSoon: nextPlan.isExpiringSoon,
+      planName: nextPlan.name
+    };
+  };
+
+  // Status Counts for Tabs
   const totalCount = processedLicenses.length;
   const availableCount = processedLicenses.filter(l => l.isUsableAvailable).length;
   const expiringSoonCount = processedLicenses.filter(l => l.isExpiringSoon).length;
   const expiredCount = processedLicenses.filter(l => l.isExpired).length;
   const deactivatedCount = processedLicenses.filter(l => l.isDeactivated).length;
 
-  // Processed Subscription Groups
+  // Processed Subscription Groups with Next Expiry
   const processedGroups = useMemo(() => {
     return (subscriptionGroups || []).map(group => {
       const groupPlans = processedLicenses.filter(lic => lic.groupId === group.id);
@@ -532,6 +556,8 @@ const Licenses = () => {
       const availablePlansCount = groupPlans.filter(p => p.isUsableAvailable).length;
       const deactivatedPlansCount = groupPlans.filter(p => p.isDeactivated).length;
 
+      const nextExpiry = getGroupNextExpiry(groupPlans);
+
       return {
         ...group,
         plans: groupPlans,
@@ -542,7 +568,8 @@ const Licenses = () => {
         availablePlansCount,
         deactivatedPlansCount,
         hasExpiringSoon: expiringSoonPlansCount > 0,
-        hasExpired: expiredPlansCount > 0
+        hasExpired: expiredPlansCount > 0,
+        nextExpiry
       };
     });
   }, [subscriptionGroups, processedLicenses]);
@@ -648,397 +675,12 @@ const Licenses = () => {
     });
   }, [employees, modalEmployeeSearch]);
 
-  // Card Status Badges Helper
+  // Status Badges Helper
   const getStatusBadge = (status) => {
     if (status === "Deactivated") return "bg-slate-100 text-slate-700 border-slate-300";
-    if (status === "Expired") return "bg-red-50 text-red-800 border-red-200";
+    if (status === "Expired") return "bg-rose-50 text-rose-800 border-rose-200";
     if (status === "Expiring Soon") return "bg-amber-50 text-amber-800 border-amber-200";
     return "bg-emerald-50 text-emerald-800 border-emerald-200";
-  };
-
-  const getProgressBarColor = (status) => {
-    if (status === "Deactivated") return "bg-slate-400";
-    if (status === "Expired") return "bg-red-600";
-    if (status === "Expiring Soon") return "bg-amber-500";
-    return "bg-emerald-600";
-  };
-
-  // Render Standalone License Card (Simple, no employee allocation, icon actions)
-  const renderStandaloneLicenseCard = (lic) => {
-    const isMenuOpen = activeMenuLicId === lic.id;
-
-    return (
-      <div
-        key={lic.id}
-        className={`bg-white border rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between overflow-hidden relative ${
-          lic.status === 'Expiring Soon'
-            ? 'border-amber-300 ring-1 ring-amber-100'
-            : lic.status === 'Deactivated'
-            ? 'border-slate-200 opacity-85 bg-slate-50/30'
-            : 'border-[#E6DED8]'
-        }`}
-      >
-        {/* Header */}
-        <div className="p-5 border-b border-[#E6DED8] space-y-1.5 select-none">
-          <div className="flex justify-between items-center gap-2">
-            <span className="text-[10px] font-black tracking-wider text-[#9CA3AF] uppercase bg-gray-100 px-2 py-0.5 rounded">
-              {lic.vendor || "Standalone"}
-            </span>
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${getStatusBadge(lic.status)}`}>
-              {lic.status}
-            </span>
-          </div>
-          <h3 className="font-extrabold text-[#1F2937] text-base leading-tight">
-            {lic.name}
-          </h3>
-          {lic.description && (
-            <p className="text-xs text-gray-500 line-clamp-1">{lic.description}</p>
-          )}
-        </div>
-
-        {/* Specs Section */}
-        <div className="p-5 space-y-4 flex-grow select-none">
-          {/* Expiry Details */}
-          <div className="space-y-1.5">
-            <div className="flex justify-between items-center text-xs font-bold">
-              <span className="text-[#6B7280] flex items-center gap-1">
-                <Calendar className="h-3.5 w-3.5" />
-                <span>Expires {lic.endDate}</span>
-              </span>
-              <span className={
-                lic.status === 'Deactivated'
-                  ? 'text-slate-500 font-semibold'
-                  : lic.status === 'Expired'
-                  ? 'text-red-600 font-extrabold'
-                  : lic.status === 'Expiring Soon'
-                  ? 'text-amber-600 font-extrabold'
-                  : 'text-emerald-700 font-bold'
-              }>
-                {lic.status === 'Deactivated'
-                  ? 'Deactivated'
-                  : lic.status === 'Expired'
-                  ? 'Expired'
-                  : `${lic.remainingDays} days left`}
-              </span>
-            </div>
-            {/* Progress bar */}
-            <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-300 ${getProgressBarColor(lic.status)}`}
-                style={{ width: `${lic.status === 'Deactivated' ? 100 : lic.elapsedPercent}%` }}
-              ></div>
-            </div>
-          </div>
-
-          {/* Cost Info */}
-          {(lic.cost && lic.cost !== 'N/A') && (
-            <div className="flex items-center gap-1.5 text-xs text-slate-600 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100">
-              <DollarSign className="h-3.5 w-3.5 text-slate-400" />
-              <span className="font-semibold">{lic.cost}</span>
-            </div>
-          )}
-
-          {/* Notification Target config */}
-          {lic.status !== 'Deactivated' && (
-            <div className="flex items-center gap-1.5 text-[10px] font-semibold text-gray-400 bg-gray-50 p-2.5 rounded-lg border border-gray-100">
-              <Bell className="h-3.5 w-3.5 shrink-0 text-[#3B82F6]" />
-              <span>
-                Notifies Admin <strong className="text-[#2563EB] font-bold">{lic.alertDaysBefore || 30} days</strong> before expiry.
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Card Actions Footer: Compact Icon Actions (Edit, Renew, ⋮ More) */}
-        <div className="p-3.5 bg-gray-50 border-t border-[#E6DED8] flex justify-between items-center gap-2 select-none relative">
-          <span className="text-[11px] font-bold text-gray-400">
-            {lic.status === 'Deactivated' ? 'Deactivated' : 'Standalone'}
-          </span>
-
-          <div className="flex items-center gap-1.5 relative">
-            {/* EDIT ICON BUTTON */}
-            <button
-              type="button"
-              onClick={() => handleOpenEditModal(lic)}
-              title="Edit license"
-              aria-label="Edit license"
-              className="p-1.5 bg-white hover:bg-gray-100 border border-[#E6DED8] hover:border-gray-300 text-gray-700 rounded-xl shadow-xs transition-colors cursor-pointer"
-            >
-              <Edit2 className="h-4 w-4" />
-            </button>
-
-            {/* RENEW ICON BUTTON (Active Only) */}
-            {lic.status !== 'Deactivated' && (
-              <button
-                type="button"
-                onClick={() => handleOpenRenewModal(lic)}
-                title="Renew license"
-                aria-label="Renew license"
-                className="p-1.5 bg-white hover:bg-emerald-50 border border-[#E6DED8] hover:border-emerald-300 text-emerald-700 rounded-xl shadow-xs transition-colors cursor-pointer"
-              >
-                <RotateCcw className="h-4 w-4" />
-              </button>
-            )}
-
-            {/* MORE ACTIONS DROPDOWN TRIGGER (⋮) */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setActiveMenuLicId(isMenuOpen ? null : lic.id);
-              }}
-              title="More actions"
-              aria-label="More actions"
-              className="p-1.5 bg-white hover:bg-gray-100 border border-[#E6DED8] hover:border-gray-300 text-gray-700 rounded-xl shadow-xs transition-colors cursor-pointer"
-            >
-              <MoreVertical className="h-4 w-4" />
-            </button>
-
-            {/* MORE ACTIONS DROPDOWN MENU */}
-            {isMenuOpen && (
-              <div
-                ref={menuRef}
-                className="absolute right-0 bottom-full mb-1.5 w-44 bg-white border border-[#E6DED8] rounded-xl shadow-xl py-1.5 z-40 animate-scale-up text-xs font-semibold"
-              >
-                {lic.status !== 'Deactivated' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveMenuLicId(null);
-                      triggerEmailAlert(lic.id);
-                    }}
-                    className="w-full px-3.5 py-2 text-left text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2 cursor-pointer transition-colors"
-                  >
-                    <Mail className="h-3.5 w-3.5 text-blue-600" />
-                    <span>Send Expiry Alert</span>
-                  </button>
-                )}
-
-                {lic.status !== 'Deactivated' && (
-                  <button
-                    type="button"
-                    onClick={() => handleOpenDeactivateModal(lic)}
-                    className="w-full px-3.5 py-2 text-left text-amber-700 hover:bg-amber-50 flex items-center gap-2 cursor-pointer transition-colors"
-                  >
-                    <Ban className="h-3.5 w-3.5 text-amber-600" />
-                    <span>Deactivate License</span>
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveMenuLicId(null);
-                    setLicToDelete(lic);
-                  }}
-                  className="w-full px-3.5 py-2 text-left text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer transition-colors"
-                >
-                  <Trash2 className="h-3.5 w-3.5 text-rose-500" />
-                  <span>Delete License</span>
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // Render Subscription Plan Card inside Group (Shows employees count, icon actions)
-  const renderGroupPlanCard = (lic) => {
-    const isMenuOpen = activeMenuLicId === lic.id;
-
-    return (
-      <div
-        key={lic.id}
-        className={`bg-white border rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between overflow-hidden relative ${
-          lic.status === 'Expiring Soon'
-            ? 'border-amber-300 ring-1 ring-amber-100'
-            : lic.status === 'Deactivated'
-            ? 'border-slate-200 opacity-85 bg-slate-50/30'
-            : 'border-[#E6DED8]'
-        }`}
-      >
-        {/* Header */}
-        <div className="p-5 border-b border-[#E6DED8] space-y-1.5 select-none">
-          <div className="flex justify-between items-center gap-2">
-            <span className="text-[10px] font-black tracking-wider text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded">
-              {lic.assignedCount} {lic.assignedCount === 1 ? 'Employee' : 'Employees'}
-            </span>
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${getStatusBadge(lic.status)}`}>
-              {lic.status}
-            </span>
-          </div>
-          <h3 className="font-extrabold text-[#1F2937] text-base leading-tight">
-            {lic.name}
-          </h3>
-          {lic.description && (
-            <p className="text-xs text-gray-500 line-clamp-1">{lic.description}</p>
-          )}
-        </div>
-
-        {/* Specs Section */}
-        <div className="p-5 space-y-4 flex-grow select-none">
-          {/* Expiry Details */}
-          <div className="space-y-1.5">
-            <div className="flex justify-between items-center text-xs font-bold">
-              <span className="text-[#6B7280] flex items-center gap-1">
-                <Calendar className="h-3.5 w-3.5" />
-                <span>Expires {lic.endDate}</span>
-              </span>
-              <span className={
-                lic.status === 'Deactivated'
-                  ? 'text-slate-500 font-semibold'
-                  : lic.status === 'Expired'
-                  ? 'text-red-600 font-extrabold'
-                  : lic.status === 'Expiring Soon'
-                  ? 'text-amber-600 font-extrabold'
-                  : 'text-emerald-700 font-bold'
-              }>
-                {lic.status === 'Deactivated'
-                  ? 'Deactivated'
-                  : lic.status === 'Expired'
-                  ? 'Expired'
-                  : `${lic.remainingDays} days left`}
-              </span>
-            </div>
-            {/* Progress bar */}
-            <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-300 ${getProgressBarColor(lic.status)}`}
-                style={{ width: `${lic.status === 'Deactivated' ? 100 : lic.elapsedPercent}%` }}
-              ></div>
-            </div>
-          </div>
-
-          {/* Assigned Employees Preview */}
-          <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl text-xs space-y-1">
-            <div className="flex items-center gap-1.5 text-slate-700 font-bold text-[11px]">
-              <Users className="h-3.5 w-3.5 text-blue-600" />
-              <span>Assigned Employees ({lic.assignedCount})</span>
-            </div>
-            {lic.assignedCount > 0 ? (
-              <div className="flex flex-wrap gap-1 pt-0.5">
-                {lic.assignedEmployees.slice(0, 3).map(emp => (
-                  <span key={emp.employeeId || emp.id} className="text-[10px] bg-white border border-slate-200 text-slate-700 px-1.5 py-0.5 rounded truncate max-w-[110px]">
-                    {emp.name}
-                  </span>
-                ))}
-                {lic.assignedCount > 3 && (
-                  <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-bold">
-                    +{lic.assignedCount - 3}
-                  </span>
-                )}
-              </div>
-            ) : (
-              <div className="text-[10px] text-gray-400 italic">No employees assigned (optional)</div>
-            )}
-          </div>
-
-          {/* Notification Target config */}
-          {lic.status !== 'Deactivated' && (
-            <div className="flex items-center gap-1.5 text-[10px] font-semibold text-gray-400 bg-gray-50 p-2.5 rounded-lg border border-gray-100">
-              <Bell className="h-3.5 w-3.5 shrink-0 text-[#3B82F6]" />
-              <span>
-                Notifies Admin <strong className="text-[#2563EB] font-bold">{lic.alertDaysBefore || 30} days</strong> before expiry.
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Card Actions Footer: Compact Icon Actions (Edit, Renew, ⋮ More) */}
-        <div className="p-3.5 bg-gray-50 border-t border-[#E6DED8] flex justify-between items-center gap-2 select-none relative">
-          <span className="text-[11px] font-bold text-gray-400">
-            {lic.status === 'Deactivated' ? 'Deactivated' : 'Plan'}
-          </span>
-
-          <div className="flex items-center gap-1.5 relative">
-            {/* EDIT ICON BUTTON */}
-            <button
-              type="button"
-              onClick={() => handleOpenEditModal(lic)}
-              title="Edit plan & assignments"
-              aria-label="Edit plan"
-              className="p-1.5 bg-white hover:bg-gray-100 border border-[#E6DED8] hover:border-gray-300 text-gray-700 rounded-xl shadow-xs transition-colors cursor-pointer"
-            >
-              <Edit2 className="h-4 w-4" />
-            </button>
-
-            {/* RENEW ICON BUTTON (Active Only) */}
-            {lic.status !== 'Deactivated' && (
-              <button
-                type="button"
-                onClick={() => handleOpenRenewModal(lic)}
-                title="Renew plan"
-                aria-label="Renew plan"
-                className="p-1.5 bg-white hover:bg-emerald-50 border border-[#E6DED8] hover:border-emerald-300 text-emerald-700 rounded-xl shadow-xs transition-colors cursor-pointer"
-              >
-                <RotateCcw className="h-4 w-4" />
-              </button>
-            )}
-
-            {/* MORE ACTIONS DROPDOWN TRIGGER (⋮) */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setActiveMenuLicId(isMenuOpen ? null : lic.id);
-              }}
-              title="More actions"
-              aria-label="More actions"
-              className="p-1.5 bg-white hover:bg-gray-100 border border-[#E6DED8] hover:border-gray-300 text-gray-700 rounded-xl shadow-xs transition-colors cursor-pointer"
-            >
-              <MoreVertical className="h-4 w-4" />
-            </button>
-
-            {/* MORE ACTIONS DROPDOWN MENU */}
-            {isMenuOpen && (
-              <div
-                ref={menuRef}
-                className="absolute right-0 bottom-full mb-1.5 w-44 bg-white border border-[#E6DED8] rounded-xl shadow-xl py-1.5 z-40 animate-scale-up text-xs font-semibold"
-              >
-                {lic.status !== 'Deactivated' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveMenuLicId(null);
-                      triggerEmailAlert(lic.id);
-                    }}
-                    className="w-full px-3.5 py-2 text-left text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2 cursor-pointer transition-colors"
-                  >
-                    <Mail className="h-3.5 w-3.5 text-blue-600" />
-                    <span>Send Expiry Alert</span>
-                  </button>
-                )}
-
-                {lic.status !== 'Deactivated' && (
-                  <button
-                    type="button"
-                    onClick={() => handleOpenDeactivateModal(lic)}
-                    className="w-full px-3.5 py-2 text-left text-amber-700 hover:bg-amber-50 flex items-center gap-2 cursor-pointer transition-colors"
-                  >
-                    <Ban className="h-3.5 w-3.5 text-amber-600" />
-                    <span>Deactivate Plan</span>
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveMenuLicId(null);
-                    setLicToDelete(lic);
-                  }}
-                  className="w-full px-3.5 py-2 text-left text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer transition-colors"
-                >
-                  <Trash2 className="h-3.5 w-3.5 text-rose-500" />
-                  <span>Delete Plan</span>
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
   };
 
   return (
@@ -1046,18 +688,20 @@ const Licenses = () => {
       {/* ================= VIEW 1: GROUP DRILLDOWN VIEW ================= */}
       {activeGroup ? (
         <div className="space-y-6 animate-fade-in">
-          {/* Back Navigation Bar: ← Back to Licenses */}
-          <div className="flex items-center gap-2">
+          {/* Breadcrumb Navigation: Licenses / OpenAI */}
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
             <button
+              type="button"
               onClick={() => handleSelectGroup(null)}
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-[#E6DED8] px-3 py-1.5 rounded-xl transition-colors cursor-pointer shadow-2xs"
+              className="text-slate-500 hover:text-[#0B2545] font-bold cursor-pointer transition-colors"
             >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              <span>← Back to Licenses</span>
+              Licenses
             </button>
+            <span>/</span>
+            <span className="text-slate-800 font-bold">{activeGroup.name}</span>
           </div>
 
-          {/* Compact Group Header (No edit group button) */}
+          {/* Group Header */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-4 border-b border-[#E6DED8]">
             <div className="space-y-1">
               <div className="flex items-center gap-2.5">
@@ -1071,7 +715,7 @@ const Licenses = () => {
               {activeGroup.description && (
                 <p className="text-xs text-gray-500 max-w-2xl">{activeGroup.description}</p>
               )}
-              {/* Compact Summary Line */}
+              {/* Summary Line */}
               <div className="flex items-center gap-2 text-xs font-bold text-gray-600 pt-1">
                 <span>{activeGroup.plansCount} {activeGroup.plansCount === 1 ? 'Plan' : 'Plans'}</span>
                 <span>•</span>
@@ -1088,8 +732,8 @@ const Licenses = () => {
               </div>
             </div>
 
-            {/* Header Actions: Edit Group and Delete Group */}
-            <div className="flex items-center gap-2">
+            {/* Header Actions: Edit Group, Delete Group, Add Plan */}
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 type="button"
                 onClick={handleOpenEditGroupModal}
@@ -1104,6 +748,14 @@ const Licenses = () => {
                 className="px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-600 border border-[#E6DED8] hover:border-rose-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
               >
                 Delete Group
+              </button>
+              <button
+                type="button"
+                onClick={() => handleOpenAddModal(activeGroup.id)}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#0B2545] hover:bg-[#134074] text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Add Plan</span>
               </button>
             </div>
           </div>
@@ -1146,108 +798,223 @@ const Licenses = () => {
             </div>
           </div>
 
-          {/* Subscription Plans Section Header + Single Add Plan button */}
-          <div className="flex justify-between items-center select-none pt-1">
+          {/* Subscription Plans Table in Group */}
+          <div className="bg-white border border-[#E6DED8] rounded-2xl p-5 shadow-xs space-y-4">
             <h2 className="text-base font-extrabold text-[#1F2937]">Subscription Plans</h2>
-            <button
-              onClick={() => handleOpenAddModal(activeGroup.id)}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-[#0B2545] hover:bg-[#134074] text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
-            >
-              <Plus className="h-4 w-4" />
-              <span>+ Add Plan</span>
-            </button>
-          </div>
 
-          {/* Grid of Plans in Group or Compact Empty State */}
-          {activeGroupFilteredPlans.length === 0 ? (
-            <div className="bg-white border border-dashed border-[#E6DED8] rounded-2xl py-10 text-center select-none space-y-1">
-              <p className="text-sm font-bold text-gray-700">No subscription plans yet.</p>
-              <p className="text-xs text-gray-400">Add a plan to this group to get started.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {activeGroupFilteredPlans.map(lic => renderGroupPlanCard(lic))}
-            </div>
-          )}
+            {activeGroupFilteredPlans.length === 0 ? (
+              <div className="py-8 text-center border border-dashed border-[#E6DED8] rounded-xl text-xs text-slate-400">
+                No subscription plans found in this group.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-[#E6DED8] text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      <th className="pb-3 px-3">Plan Name</th>
+                      <th className="pb-3 px-3 text-center">Employees</th>
+                      <th className="pb-3 px-3">End Date</th>
+                      <th className="pb-3 px-3 text-center">Status</th>
+                      <th className="pb-3 pl-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {activeGroupFilteredPlans.map(lic => {
+                      const isMenuOpen = activeMenuLicId === lic.id;
+
+                      return (
+                        <tr key={lic.id} className="hover:bg-slate-50/70 transition-colors font-medium">
+                          {/* Plan Name & Description */}
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="p-2 bg-blue-50 text-blue-700 rounded-xl shrink-0">
+                                <Key className="h-4 w-4" />
+                              </div>
+                              <div>
+                                <span className="font-bold text-slate-800 block text-xs">
+                                  {lic.name}
+                                </span>
+                                {lic.description && (
+                                  <span className="text-[10px] text-slate-400 block truncate max-w-xs">
+                                    {lic.description}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Employees Assigned */}
+                          <td className="py-3 px-3 text-center">
+                            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-bold text-[11px] bg-blue-50 text-blue-700">
+                              <Users className="h-3 w-3 text-blue-500" />
+                              <span>{lic.assignedCount}</span>
+                            </div>
+                          </td>
+
+                          {/* End Date */}
+                          <td className="py-3 px-3">
+                            <span className="font-semibold text-slate-800 text-xs flex items-center gap-1">
+                              <Calendar className="h-3 w-3 text-slate-400" />
+                              <span>{lic.endDate}</span>
+                            </span>
+                            <span className={`text-[10px] font-bold block mt-0.5 ${
+                              lic.status === 'Deactivated'
+                                ? 'text-slate-400'
+                                : lic.status === 'Expired'
+                                ? 'text-red-600'
+                                : lic.status === 'Expiring Soon'
+                                ? 'text-amber-600'
+                                : 'text-emerald-700'
+                            }`}>
+                              {lic.status === 'Deactivated'
+                                ? 'Deactivated'
+                                : lic.status === 'Expired'
+                                ? 'Expired'
+                                : `${lic.remainingDays} days left`}
+                            </span>
+                          </td>
+
+                          {/* Status */}
+                          <td className="py-3 px-3 text-center">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${getStatusBadge(lic.status)}`}>
+                              {lic.status}
+                            </span>
+                          </td>
+
+                          {/* Actions: Renew, Edit, ⋮ More */}
+                          <td className="py-3 pl-3 text-right">
+                            <div className="flex items-center justify-end gap-1 relative">
+                              {lic.status !== 'Deactivated' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenRenewModal(lic)}
+                                  title="Renew plan"
+                                  aria-label="Renew plan"
+                                  className="p-1.5 hover:bg-emerald-50 text-slate-500 hover:text-emerald-700 rounded-lg transition-colors cursor-pointer"
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditModal(lic)}
+                                title="Edit plan & assignments"
+                                aria-label="Edit plan"
+                                className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-blue-600 rounded-lg transition-colors cursor-pointer"
+                              >
+                                <Edit2 className="h-3.5 w-3.5" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveMenuLicId(isMenuOpen ? null : lic.id);
+                                }}
+                                title="More actions"
+                                aria-label="More actions"
+                                className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-slate-800 rounded-lg transition-colors cursor-pointer"
+                              >
+                                <MoreVertical className="h-3.5 w-3.5" />
+                              </button>
+
+                              {isMenuOpen && (
+                                <div
+                                  ref={menuRef}
+                                  className="absolute right-0 top-full mt-1 w-44 bg-white border border-[#E6DED8] rounded-xl shadow-xl py-1 z-40 text-xs font-semibold animate-scale-up"
+                                >
+                                  {lic.status !== 'Deactivated' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActiveMenuLicId(null);
+                                        triggerEmailAlert(lic.id);
+                                      }}
+                                      className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2 cursor-pointer transition-colors"
+                                    >
+                                      <Mail className="h-3.5 w-3.5 text-blue-600" />
+                                      <span>Send Expiry Alert</span>
+                                    </button>
+                                  )}
+
+                                  {lic.status !== 'Deactivated' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenDeactivateModal(lic)}
+                                      className="w-full px-3 py-1.5 text-left text-amber-700 hover:bg-amber-50 flex items-center gap-2 cursor-pointer transition-colors"
+                                    >
+                                      <Ban className="h-3.5 w-3.5 text-amber-600" />
+                                      <span>Deactivate Plan</span>
+                                    </button>
+                                  )}
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveMenuLicId(null);
+                                      setLicToDelete(lic);
+                                    }}
+                                    className="w-full px-3 py-1.5 text-left text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer transition-colors"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+                                    <span>Delete Plan</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       ) : (
         /* ================= VIEW 2: MAIN OVERVIEW (GROUPS + STANDALONE) ================= */
         <div className="space-y-6 animate-fade-in">
-          {/* Page Header */}
+          {/* Page Header - Primary Creation Actions */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 select-none">
             <div>
               <h1 className="text-2xl font-black text-[#1F2937] tracking-tight">Software Subscriptions & Licenses</h1>
-              <p className="text-sm text-[#6B7280] mt-0.5">Track corporate software lifecycle, subscription groups, plan renewals, and notifications.</p>
+              <p className="text-sm text-[#6B7280] mt-0.5">Track corporate software lifecycle, renewals and notifications.</p>
             </div>
 
             {/* Header Action Buttons */}
             <div className="flex items-center gap-2.5 flex-wrap">
               <button
+                type="button"
                 onClick={handleOpenCreateGroupModal}
-                className="flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-800 border border-[#E6DED8] hover:border-slate-300 font-bold text-sm rounded-xl shadow-xs transition-all duration-200 cursor-pointer"
+                className="flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-800 border border-[#E6DED8] hover:border-slate-300 font-bold text-xs rounded-xl shadow-xs transition-all duration-200 cursor-pointer"
               >
                 <FolderPlus className="h-4 w-4 text-[#0B2545]" />
-                <span>+ Create Group</span>
+                <span>Create Group</span>
               </button>
 
               <button
+                type="button"
                 onClick={() => handleOpenAddModal(null)}
-                className="flex items-center gap-2 px-4 py-2 bg-[#0B2545] hover:bg-[#134074] text-white font-semibold rounded-xl shadow-sm hover:shadow transition-all duration-200 cursor-pointer transform hover:-translate-y-0.5 text-sm"
+                className="flex items-center gap-2 px-4 py-2 bg-[#0B2545] hover:bg-[#134074] text-white font-bold rounded-xl shadow-xs transition-all duration-200 cursor-pointer text-xs"
               >
                 <Plus className="h-4 w-4" />
-                <span>+ Create License</span>
+                <span>Create License</span>
               </button>
             </div>
           </div>
 
-          {/* KPI Metrics Dashboard */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 select-none">
-            <MetricCard 
-              icon={Key} 
-              title="Total Subscriptions" 
-              value={totalCount} 
-              color="blue" 
-              isActive={statusFilter === 'All'}
-              onClick={() => handleStatusFilterChange('All')} 
-            />
-            <MetricCard 
-              icon={CheckCircle} 
-              title="Available Subscriptions" 
-              value={availableCount} 
-              color="green" 
-              subtext="Active & usable licenses"
-              isActive={statusFilter === 'Available'}
-              onClick={() => handleStatusFilterChange('Available')} 
-            />
-            <MetricCard 
-              icon={AlertTriangle} 
-              title="Expiring Soon" 
-              value={expiringSoonCount} 
-              color="orange" 
-              subtext="Under notice period" 
-              isActive={statusFilter === 'Expiring Soon'}
-              onClick={() => handleStatusFilterChange('Expiring Soon')} 
-            />
-            <MetricCard 
-              icon={XCircle} 
-              title="Expired Subscriptions" 
-              value={expiredCount} 
-              color="red" 
-              isActive={statusFilter === 'Expired'}
-              onClick={() => handleStatusFilterChange('Expired')} 
-            />
-          </div>
-
-          {/* Filters & Control Bar */}
+          {/* Search & Status Filter Tabs */}
           <div className="bg-white border border-[#E6DED8] rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row gap-4 justify-between items-center select-none">
             <div className="relative w-full sm:w-[350px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-[#9CA3AF]" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF]" />
               <input
                 type="text"
-                placeholder="Search software, group, or vendor..."
+                placeholder="Search licenses, groups or vendors..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-[#E6DED8] rounded-xl text-sm focus:outline-none focus:border-[#3B82F6] focus:ring-1 focus:ring-[#3B82F6] transition-colors"
+                className="w-full pl-9 pr-4 py-2 border border-[#E6DED8] rounded-xl text-xs focus:outline-none focus:border-[#3B82F6] focus:ring-1 focus:ring-[#3B82F6] transition-colors"
               />
             </div>
 
@@ -1257,6 +1024,7 @@ const Licenses = () => {
                 return (
                   <button
                     key={tab}
+                    type="button"
                     onClick={() => handleStatusFilterChange(tab)}
                     className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
                       statusFilter === tab
@@ -1276,164 +1044,359 @@ const Licenses = () => {
             </div>
           </div>
 
-          {/* --- SECTION 1: SUBSCRIPTION GROUPS --- */}
-          <div className="space-y-4">
-            <div className="flex justify-between items-center select-none">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 bg-blue-50 text-blue-800 rounded-lg">
-                  <Folder className="h-4 w-4" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-extrabold text-[#1F2937] tracking-tight">Subscription Groups</h2>
-                  <p className="text-xs text-[#6B7280]">Parent containers grouping different subscription plans (e.g. OpenAI, Microsoft, Adobe)</p>
-                </div>
+          {/* --- SECTION 1: SUBSCRIPTION GROUPS TABLE --- */}
+          <div className="bg-white border border-[#E6DED8] rounded-2xl p-5 shadow-xs space-y-4">
+            <div className="flex items-center gap-2 select-none">
+              <div className="p-1.5 bg-blue-50 text-blue-800 rounded-lg">
+                <Folder className="h-4 w-4" />
               </div>
-              <button
-                onClick={handleOpenCreateGroupModal}
-                className="flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-800 border border-[#E6DED8] font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
-              >
-                <FolderPlus className="h-3.5 w-3.5 text-[#0B2545]" />
-                <span>+ Create Group</span>
-              </button>
+              <div>
+                <h2 className="text-base font-extrabold text-[#1F2937] tracking-tight">Subscription Groups</h2>
+                <p className="text-xs text-[#6B7280]">Parent containers grouping different subscription plans (e.g. OpenAI, Microsoft, Adobe)</p>
+              </div>
             </div>
 
             {filteredGroups.length === 0 ? (
-              <div className="bg-white border border-dashed border-[#E6DED8] rounded-2xl py-8 text-center select-none">
-                <Folder className="mx-auto h-8 w-8 text-[#9CA3AF] mb-2" />
-                <h4 className="text-sm font-bold text-[#1F2937]">No subscription groups found</h4>
-                <p className="text-xs text-[#6B7280] mt-0.5">
-                  {processedGroups.length === 0
-                    ? 'Create your first Subscription Group (e.g. OpenAI, Microsoft, Adobe) to organize multiple plans.'
-                    : 'No groups match your current filter.'}
-                </p>
-                {processedGroups.length === 0 && (
-                  <button
-                    onClick={handleOpenCreateGroupModal}
-                    className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0B2545] text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer hover:bg-[#134074] transition-colors"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    <span>Create Subscription Group</span>
-                  </button>
-                )}
+              <div className="py-8 text-center border border-dashed border-[#E6DED8] rounded-xl text-xs text-slate-400 select-none">
+                No subscription groups found matching your filter.
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {filteredGroups.map(group => {
-                  return (
-                    <div
-                      key={group.id}
-                      onClick={() => handleSelectGroup(group.id)}
-                      className="bg-white border border-[#E6DED8] hover:border-[#0B2545]/40 rounded-2xl p-5 shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between group relative overflow-hidden"
-                    >
-                      <div className="space-y-3">
-                        {/* Top Meta */}
-                        <div className="flex justify-between items-start">
-                          <div className="flex items-center gap-2.5">
-                            <div className="p-2.5 bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-900 rounded-xl border border-blue-100 group-hover:bg-blue-100 transition-colors">
-                              <Layers className="h-5 w-5 text-blue-700" />
-                            </div>
-                            <div>
-                              <h3 className="font-extrabold text-base text-[#1F2937] group-hover:text-blue-900 transition-colors">
-                                {group.name}
-                              </h3>
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                                {group.vendor || "Group"}
-                              </span>
-                            </div>
-                          </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-[#E6DED8] text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      <th className="pb-3 px-3">Group</th>
+                      <th className="pb-3 px-3 text-center">Plans</th>
+                      <th className="pb-3 px-3 text-center">Employees</th>
+                      <th className="pb-3 px-3">Next Expiry</th>
+                      <th className="pb-3 px-3 text-center">Status</th>
+                      <th className="pb-3 pl-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {filteredGroups.map(group => {
+                      const isMenuOpen = activeMenuLicId === `group-${group.id}`;
 
-                          {/* Attention indicator if expiring soon */}
-                          {group.hasExpiringSoon && (
-                            <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 animate-pulse">
-                              <AlertTriangle className="h-3 w-3 text-amber-600" />
-                              <span>{group.expiringSoonPlansCount} Expiring Soon</span>
+                      return (
+                        <tr
+                          key={group.id}
+                          onClick={() => handleSelectGroup(group.id)}
+                          className="hover:bg-slate-50/70 transition-colors cursor-pointer group font-medium"
+                        >
+                          {/* Group Name & Vendor */}
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="p-2 bg-blue-50 text-blue-700 rounded-xl shrink-0 group-hover:bg-blue-100 transition-colors">
+                                <Layers className="h-4 w-4" />
+                              </div>
+                              <div>
+                                <span className="font-bold text-slate-800 group-hover:text-blue-700 transition-colors block text-xs">
+                                  {group.name}
+                                </span>
+                                {group.vendor && (
+                                  <span className="text-[10px] text-slate-400 font-semibold block">
+                                    {group.vendor}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Plans Count */}
+                          <td className="py-3 px-3 text-center">
+                            <span className="px-2 py-0.5 rounded-md font-bold text-[11px] bg-slate-100 text-slate-700">
+                              {group.plansCount}
                             </span>
-                          )}
-                        </div>
+                          </td>
 
-                        {/* Description */}
-                        {group.description && (
-                          <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
-                            {group.description}
-                          </p>
-                        )}
+                          {/* Employees Count */}
+                          <td className="py-3 px-3 text-center">
+                            <span className="px-2 py-0.5 rounded-md font-bold text-[11px] bg-blue-50 text-blue-700">
+                              {group.uniqueEmployeesCount}
+                            </span>
+                          </td>
 
-                        {/* Plans Preview Chips */}
-                        {group.plans.length > 0 ? (
-                          <div className="flex flex-wrap gap-1.5 pt-1">
-                            {group.plans.slice(0, 3).map(p => (
-                              <span key={p.id} className="text-[10px] font-semibold bg-gray-50 border border-gray-200 text-gray-700 px-2 py-0.5 rounded-md truncate max-w-[120px]">
-                                {p.name}
-                              </span>
-                            ))}
-                            {group.plans.length > 3 && (
-                              <span className="text-[10px] font-bold bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-md">
-                                +{group.plans.length - 3} more
-                              </span>
+                          {/* Next Expiry */}
+                          <td className="py-3 px-3">
+                            {group.nextExpiry ? (
+                              <div>
+                                <span className="font-semibold text-slate-800 text-xs flex items-center gap-1">
+                                  <Calendar className="h-3 w-3 text-slate-400" />
+                                  <span>{group.nextExpiry.dateStr}</span>
+                                </span>
+                                <span className={`text-[10px] font-bold block mt-0.5 ${
+                                  group.nextExpiry.isExpiringSoon ? 'text-amber-600' : 'text-slate-400'
+                                }`}>
+                                  {group.nextExpiry.relativeText}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 text-xs font-semibold">—</span>
                             )}
-                          </div>
-                        ) : (
-                          <div className="text-[11px] text-gray-400 italic pt-1">
-                            0 plans added yet • Ready for plans
-                          </div>
-                        )}
-                      </div>
+                          </td>
 
-                      {/* Group Bottom Metrics & CTA */}
-                      <div className="pt-4 mt-4 border-t border-[#E6DED8] flex justify-between items-center select-none text-xs">
-                        <div className="flex items-center gap-3">
-                          <div className="flex items-center gap-1 text-slate-700 font-bold">
-                            <Key className="h-3.5 w-3.5 text-slate-400" />
-                            <span>{group.plansCount} {group.plansCount === 1 ? 'Plan' : 'Plans'}</span>
-                          </div>
-                          <div className="flex items-center gap-1 text-blue-700 font-bold">
-                            <Users className="h-3.5 w-3.5 text-blue-500" />
-                            <span>{group.uniqueEmployeesCount} Assigned</span>
-                          </div>
-                        </div>
+                          {/* Status */}
+                          <td className="py-3 px-3 text-center">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${
+                              group.hasExpiringSoon
+                                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            }`}>
+                              {group.hasExpiringSoon ? 'Expiring Soon' : 'Active'}
+                            </span>
+                          </td>
 
-                        <span className="text-xs font-bold text-[#0B2545] group-hover:translate-x-1 transition-transform flex items-center gap-0.5">
-                          <span>View</span>
-                          <ChevronRight className="h-4 w-4" />
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+                          {/* Actions: Edit icon, ⋮ More */}
+                          <td className="py-3 pl-3 text-right" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-1 relative">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedGroupId(group.id);
+                                  setEditGroupFormName(group.name || '');
+                                  setEditGroupFormVendor(group.vendor || '');
+                                  setEditGroupFormDescription(group.description || '');
+                                  setIsEditGroupModalOpen(true);
+                                }}
+                                title="Edit Group"
+                                aria-label="Edit Group"
+                                className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-blue-600 rounded-lg transition-colors cursor-pointer"
+                              >
+                                <Edit2 className="h-3.5 w-3.5" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveMenuLicId(isMenuOpen ? null : `group-${group.id}`);
+                                }}
+                                title="More options"
+                                aria-label="More options"
+                                className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-slate-800 rounded-lg transition-colors cursor-pointer"
+                              >
+                                <MoreVertical className="h-3.5 w-3.5" />
+                              </button>
+
+                              {isMenuOpen && (
+                                <div
+                                  ref={menuRef}
+                                  className="absolute right-0 top-full mt-1 w-36 bg-white border border-[#E6DED8] rounded-xl shadow-xl py-1 z-40 text-xs font-semibold animate-scale-up"
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveMenuLicId(null);
+                                      handleSelectGroup(group.id);
+                                    }}
+                                    className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer"
+                                  >
+                                    <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+                                    <span>View Details</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveMenuLicId(null);
+                                      setGroupToDelete(group);
+                                    }}
+                                    className="w-full px-3 py-1.5 text-left text-rose-600 hover:bg-rose-50 flex items-center gap-1.5 cursor-pointer"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+                                    <span>Delete Group</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
 
-          {/* --- SECTION 2: STANDALONE LICENSES --- */}
-          <div className="space-y-4 pt-4 border-t border-[#E6DED8]">
-            <div className="flex justify-between items-center select-none">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 bg-emerald-50 text-emerald-800 rounded-lg">
-                  <Key className="h-4 w-4" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-extrabold text-[#1F2937] tracking-tight">Standalone Subscriptions & Licenses</h2>
-                  <p className="text-xs text-[#6B7280]">Individual software licenses operating independently without subscription groups</p>
-                </div>
+          {/* --- SECTION 2: STANDALONE LICENSES TABLE --- */}
+          <div className="bg-white border border-[#E6DED8] rounded-2xl p-5 shadow-xs space-y-4">
+            <div className="flex items-center gap-2 select-none">
+              <div className="p-1.5 bg-emerald-50 text-emerald-800 rounded-lg">
+                <Key className="h-4 w-4" />
               </div>
-              <button
-                onClick={() => handleOpenAddModal(null)}
-                className="flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-800 border border-[#E6DED8] font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
-              >
-                <Plus className="h-3.5 w-3.5 text-[#0B2545]" />
-                <span>+ Add Standalone</span>
-              </button>
+              <div>
+                <h2 className="text-base font-extrabold text-[#1F2937] tracking-tight">Standalone Subscriptions & Licenses</h2>
+                <p className="text-xs text-[#6B7280]">Individual software licenses operating independently without subscription groups</p>
+              </div>
             </div>
 
             {filteredStandaloneLicenses.length === 0 ? (
-              <div className="bg-white border border-[#E6DED8] rounded-2xl py-10 text-center select-none shadow-sm">
-                <Key className="mx-auto h-10 w-10 text-[#9CA3AF] mb-2" />
-                <h3 className="text-base font-bold text-[#1F2937]">No standalone subscriptions found</h3>
-                <p className="text-xs text-[#6B7280] mt-0.5">All licenses may belong to Subscription Groups, or match current filter.</p>
+              <div className="py-8 text-center border border-dashed border-[#E6DED8] rounded-xl text-xs text-slate-400 select-none">
+                No standalone subscriptions found matching your filter.
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {filteredStandaloneLicenses.map(lic => renderStandaloneLicenseCard(lic))}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-[#E6DED8] text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      <th className="pb-3 px-3">License</th>
+                      <th className="pb-3 px-3">Vendor</th>
+                      <th className="pb-3 px-3">End Date</th>
+                      <th className="pb-3 px-3 text-center">Status</th>
+                      <th className="pb-3 pl-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {filteredStandaloneLicenses.map(lic => {
+                      const isMenuOpen = activeMenuLicId === lic.id;
+
+                      return (
+                        <tr
+                          key={lic.id}
+                          className="hover:bg-slate-50/70 transition-colors font-medium"
+                        >
+                          {/* License Name & Description */}
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="p-2 bg-emerald-50 text-emerald-700 rounded-xl shrink-0">
+                                <Key className="h-4 w-4" />
+                              </div>
+                              <div>
+                                <span className="font-bold text-slate-800 block text-xs">
+                                  {lic.name}
+                                </span>
+                                {lic.description && (
+                                  <span className="text-[10px] text-slate-400 block truncate max-w-xs">
+                                    {lic.description}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Vendor */}
+                          <td className="py-3 px-3 text-slate-600 font-semibold">
+                            {lic.vendor || "Standalone"}
+                          </td>
+
+                          {/* End Date */}
+                          <td className="py-3 px-3">
+                            <span className="font-semibold text-slate-800 text-xs flex items-center gap-1">
+                              <Calendar className="h-3 w-3 text-slate-400" />
+                              <span>{lic.endDate}</span>
+                            </span>
+                            <span className={`text-[10px] font-bold block mt-0.5 ${
+                              lic.status === 'Deactivated'
+                                ? 'text-slate-400'
+                                : lic.status === 'Expired'
+                                ? 'text-red-600'
+                                : lic.status === 'Expiring Soon'
+                                ? 'text-amber-600'
+                                : 'text-emerald-700'
+                            }`}>
+                              {lic.status === 'Deactivated'
+                                ? 'Deactivated'
+                                : lic.status === 'Expired'
+                                ? 'Expired'
+                                : `${lic.remainingDays} days left`}
+                            </span>
+                          </td>
+
+                          {/* Status */}
+                          <td className="py-3 px-3 text-center">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${getStatusBadge(lic.status)}`}>
+                              {lic.status}
+                            </span>
+                          </td>
+
+                          {/* Actions: Renew, Edit, ⋮ More */}
+                          <td className="py-3 pl-3 text-right">
+                            <div className="flex items-center justify-end gap-1 relative">
+                              {lic.status !== 'Deactivated' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenRenewModal(lic)}
+                                  title="Renew license"
+                                  aria-label="Renew license"
+                                  className="p-1.5 hover:bg-emerald-50 text-slate-500 hover:text-emerald-700 rounded-lg transition-colors cursor-pointer"
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditModal(lic)}
+                                title="Edit license"
+                                aria-label="Edit license"
+                                className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-blue-600 rounded-lg transition-colors cursor-pointer"
+                              >
+                                <Edit2 className="h-3.5 w-3.5" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveMenuLicId(isMenuOpen ? null : lic.id);
+                                }}
+                                title="More actions"
+                                aria-label="More actions"
+                                className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-slate-800 rounded-lg transition-colors cursor-pointer"
+                              >
+                                <MoreVertical className="h-3.5 w-3.5" />
+                              </button>
+
+                              {isMenuOpen && (
+                                <div
+                                  ref={menuRef}
+                                  className="absolute right-0 top-full mt-1 w-44 bg-white border border-[#E6DED8] rounded-xl shadow-xl py-1 z-40 text-xs font-semibold animate-scale-up"
+                                >
+                                  {lic.status !== 'Deactivated' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActiveMenuLicId(null);
+                                        triggerEmailAlert(lic.id);
+                                      }}
+                                      className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2 cursor-pointer transition-colors"
+                                    >
+                                      <Mail className="h-3.5 w-3.5 text-blue-600" />
+                                      <span>Send Expiry Alert</span>
+                                    </button>
+                                  )}
+
+                                  {lic.status !== 'Deactivated' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenDeactivateModal(lic)}
+                                      className="w-full px-3 py-1.5 text-left text-amber-700 hover:bg-amber-50 flex items-center gap-2 cursor-pointer transition-colors"
+                                    >
+                                      <Ban className="h-3.5 w-3.5 text-amber-600" />
+                                      <span>Deactivate License</span>
+                                    </button>
+                                  )}
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveMenuLicId(null);
+                                      setLicToDelete(lic);
+                                    }}
+                                    className="w-full px-3 py-1.5 text-left text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer transition-colors"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+                                    <span>Delete License</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
