@@ -211,15 +211,12 @@ const Licenses = () => {
       setFormAssignedEmployeeIds([]);
     }
     setModalEmployeeSearch('');
-
-    setMenuState(null);
     setIsEditModalOpen(true);
   };
 
   // Open Renew Modal
   const handleOpenRenewModal = (lic) => {
     setLicToRenew(lic);
-    setMenuState(null);
     const oldEnd = new Date(lic.endDate || lic.end_date);
     let newStart = new Date();
     if (!isNaN(oldEnd.getTime()) && oldEnd > new Date()) {
@@ -239,7 +236,6 @@ const Licenses = () => {
   // Open Deactivate Modal
   const handleOpenDeactivateModal = (lic) => {
     setLicToDeactivate(lic);
-    setMenuState(null);
     setDeactivateReason('');
   };
 
@@ -811,8 +807,7 @@ const Licenses = () => {
                       return (
                         <tr
                           key={lic.id}
-                          onClick={() => handleOpenEditModal(lic)}
-                          className="hover:bg-slate-50/70 transition-colors cursor-pointer font-medium"
+                          className="hover:bg-slate-50/50 transition-colors font-medium cursor-default"
                         >
                           {/* Plan Name & Description */}
                           <td className="py-3 px-3">
@@ -877,10 +872,7 @@ const Licenses = () => {
                               {lic.status !== 'Deactivated' && (
                                 <button
                                   type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleOpenRenewModal(lic);
-                                  }}
+                                  onClick={() => handleOpenRenewModal(lic)}
                                   title="Renew Plan"
                                   aria-label="Renew Plan"
                                   className="p-1.5 hover:bg-emerald-50 text-slate-500 hover:text-emerald-700 rounded-lg transition-colors cursor-pointer"
@@ -891,10 +883,7 @@ const Licenses = () => {
 
                               <button
                                 type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenEditModal(lic);
-                                }}
+                                onClick={() => handleOpenEditModal(lic)}
                                 title="Edit Plan"
                                 aria-label="Edit Plan"
                                 className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-blue-600 rounded-lg transition-colors cursor-pointer"
@@ -1009,7 +998,6 @@ const Licenses = () => {
                       <th className="pb-3 px-3 text-center">Employees</th>
                       <th className="pb-3 px-3">Next Expiry</th>
                       <th className="pb-3 px-3 text-center">Status</th>
-                      <th className="pb-3 pl-3 text-right w-16"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -1082,28 +1070,6 @@ const Licenses = () => {
                               {group.hasExpiringSoon ? 'Expiring Soon' : 'Active'}
                             </span>
                           </td>
-
-                          {/* Actions: Edit icon */}
-                          <td className="py-3 pl-3 text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedGroupId(group.id);
-                                  setEditGroupFormName(group.name || '');
-                                  setEditGroupFormVendor(group.vendor || '');
-                                  setEditGroupFormDescription(group.description || '');
-                                  setIsEditGroupModalOpen(true);
-                                }}
-                                title="Edit Group"
-                                aria-label="Edit Group"
-                                className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-blue-600 rounded-lg transition-colors cursor-pointer"
-                              >
-                                <Edit2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          </td>
                         </tr>
                       );
                     })}
@@ -1146,8 +1112,7 @@ const Licenses = () => {
                       return (
                         <tr
                           key={lic.id}
-                          onClick={() => handleOpenEditModal(lic)}
-                          className="hover:bg-slate-50/70 transition-colors cursor-pointer font-medium"
+                          className="hover:bg-slate-50/50 transition-colors font-medium cursor-default"
                         >
                           {/* License Name & Description */}
                           <td className="py-3 px-3">
@@ -1209,10 +1174,7 @@ const Licenses = () => {
                               {lic.status !== 'Deactivated' && (
                                 <button
                                   type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleOpenRenewModal(lic);
-                                  }}
+                                  onClick={() => handleOpenRenewModal(lic)}
                                   title="Renew License"
                                   aria-label="Renew License"
                                   className="p-1.5 hover:bg-emerald-50 text-slate-500 hover:text-emerald-700 rounded-lg transition-colors cursor-pointer"
@@ -1223,10 +1185,7 @@ const Licenses = () => {
 
                               <button
                                 type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenEditModal(lic);
-                                }}
+                                onClick={() => handleOpenEditModal(lic)}
                                 title="Edit License"
                                 aria-label="Edit License"
                                 className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-blue-600 rounded-lg transition-colors cursor-pointer"
